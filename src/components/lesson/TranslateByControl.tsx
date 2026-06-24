@@ -45,15 +45,14 @@ export function TranslateByControl({
     reveal ? targetDy : axis === 'x' ? lockedDy : null,
   )
   const [active, setActive] = useState<'x' | 'y'>(axis === 'y' ? 'y' : 'x')
-  const [offset, setOffset] = useState<{ ox: number; oy: number }>(() =>
-    reveal
-      ? { ox: targetDx * PX_PER_UNIT, oy: -targetDy * PX_PER_UNIT }
-      : { ox: 0, oy: 0 },
-  )
   const rafRef = useRef<number | null>(null)
+  const moverRef = useRef<SVGGElement>(null)
+  const initialTransform = reveal
+    ? `translate(${targetDx * PX_PER_UNIT}px, ${-targetDy * PX_PER_UNIT}px)`
+    : 'translate(0px, 0px)'
 
-  // Always animates from the shape's start position (offset 0) to the target,
-  // so pressing Play replays the full slide from start to finish every time.
+  // Animate by mutating the node's transform directly inside the rAF loop, so
+  // the slide stays at 60 FPS without triggering a React re-render per frame.
   const animateTo = (toDx: number, toDy: number) => {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
     const targetOx = toDx * PX_PER_UNIT
@@ -63,7 +62,8 @@ export function TranslateByControl({
     const tick = (now: number) => {
       const t = Math.min(1, (now - startTime) / duration)
       const e = 1 - Math.pow(1 - t, 3) // easeOutCubic
-      setOffset({ ox: targetOx * e, oy: targetOy * e })
+      const node = moverRef.current
+      if (node) node.style.transform = `translate(${targetOx * e}px, ${targetOy * e}px)`
       if (t < 1) rafRef.current = requestAnimationFrame(tick)
       else rafRef.current = null
     }
@@ -118,8 +118,9 @@ export function TranslateByControl({
         <ShapeGlyph shape={goal} color="#64748b" dashed />
         <ShapeGlyph shape={shape} color="#1e3a5f" opacity={0.5} />
         <g
+          ref={moverRef}
           className="translate-mover"
-          style={{ transform: `translate(${offset.ox}px, ${offset.oy}px)` }}
+          style={{ transform: initialTransform }}
         >
           <ShapeGlyph shape={shape} color="#38bdf8" />
         </g>

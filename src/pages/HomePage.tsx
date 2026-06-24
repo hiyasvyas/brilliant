@@ -18,10 +18,15 @@ export function HomePage() {
     if (!user) return
     void refreshProfile()
     void (async () => {
+      const entries = await Promise.all(
+        allLessons.map(async (lesson) => {
+          const p = await getLessonProgress(user.uid, lesson.id)
+          return [lesson.id, p] as const
+        }),
+      )
       const map: Record<string, LessonProgress> = {}
-      for (const lesson of allLessons) {
-        const p = await getLessonProgress(user.uid, lesson.id)
-        if (p) map[lesson.id] = p
+      for (const [id, p] of entries) {
+        if (p) map[id] = p
       }
       setProgressMap(map)
     })()

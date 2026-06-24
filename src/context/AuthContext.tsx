@@ -10,10 +10,12 @@ import {
 import {
   createUserWithEmailAndPassword,
   EmailAuthProvider,
+  getRedirectResult,
   onAuthStateChanged,
   reauthenticateWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   updateEmail,
   updatePassword,
@@ -45,6 +47,19 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+/**
+ * Mobile browsers (especially iOS Safari and in-app webviews) routinely block
+ * auth popups, so we use a full-page redirect there and a popup on desktop.
+ */
+function prefersRedirectAuth(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent)
+}
+
+function displayNameFor(user: User): string {
+  return user.displayName ?? user.email?.split('@')[0] ?? 'Learner'
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -58,10 +73,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const auth = getFirebaseAuth()
+
+    // Completes any in-flight mobile redirect sign-in; the resulting user is
+    // delivered through onAuthStateChanged below. Errors are surfaced quietly
+    // so a cancelled redirect doesn't crash the app shell.
+    void getRedirectResult(auth).catch(() => undefined)
+
     return onAuthStateChanged(auth, async (u: User | null) => {
       setUser(u)
       if (u) {
-        const p = await getUserProfile(u.uid)
+        // Create the profile doc if it's missing (e.g. a first Google sign-in
+        // via redirect, where the upsert can't run in the calling tab).
+        let p = await getUserProfile(u.uid)
+        if (!p) p = await upsertUserProfile(u.uid, displayNameFor(u))
         setProfile(p)
       } else {
         setProfile(null)
@@ -91,10 +115,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     const auth = getFirebaseAuth()
-    const cred = await signInWithPopup(auth, getGoogleProvider())
-    const name =
-      cred.user.displayName ?? cred.user.email?.split('@')[0] ?? 'Learner'
-    const p = await upsertUserProfile(cred.user.uid, name)
+    const provider = getGoogleProvider()
+    if (prefersRedirectAuth()) {
+      // Navigates away; onAuthStateChanged + getRedirectResult finish the job.
+      await signInWithRedirect(auth, provider)
+      return
+    }
+    const cred = await signInWithPopup(auth, provider)
+    const p = await upsertUserProfile(cred.user.uid, displayNameFor(cred.user))
     setProfile(p)
   }, [])
 

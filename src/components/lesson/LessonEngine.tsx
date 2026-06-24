@@ -43,7 +43,7 @@ import {
 } from './LessonUI'
 import './LessonUI.css'
 import { useAuth } from '../../context/AuthContext'
-import { applyLeaveLessonPenalty, saveLessonProgress } from '../../services/progressService'
+import { saveLessonProgress } from '../../services/progressService'
 
 export type LessonEngineMode = 'normal' | 'review' | 'practice'
 
@@ -118,9 +118,8 @@ export function LessonEngine({
   }
 
   const handleExit = () => {
-    if (mode === 'normal' && user) {
-      void applyLeaveLessonPenalty(user.uid)
-    }
+    // Leaving mid-lesson is non-punitive: progress is already saved on every
+    // step, so the learner resumes exactly where they left off with no XP loss.
     onExit()
   }
 
@@ -629,12 +628,12 @@ function TranslateByProblem({
   )
   const [active, setActive] = useState<'x' | 'y'>(axis === 'y' ? 'y' : 'x')
 
-  // Animated pixel offset of the moving shape (slides from origin each play).
-  const [offset, setOffset] = useState<{ ox: number; oy: number }>(() =>
-    isReview
-      ? { ox: step.targetDx * PX_PER_UNIT, oy: -step.targetDy * PX_PER_UNIT }
-      : { ox: 0, oy: 0 },
-  )
+  // Slide the shape by mutating the node's transform inside the rAF loop, so
+  // the animation runs at 60 FPS without a React re-render on every frame.
+  const moverRef = useRef<SVGGElement>(null)
+  const initialTransform = isReview
+    ? `translate(${step.targetDx * PX_PER_UNIT}px, ${-step.targetDy * PX_PER_UNIT}px)`
+    : 'translate(0px, 0px)'
   const rafRef = useRef<number | null>(null)
 
   const animateTo = (toDx: number, toDy: number) => {
@@ -646,7 +645,8 @@ function TranslateByProblem({
     const tick = (now: number) => {
       const t = Math.min(1, (now - startTime) / duration)
       const e = 1 - Math.pow(1 - t, 3) // easeOutCubic
-      setOffset({ ox: targetOx * e, oy: targetOy * e })
+      const node = moverRef.current
+      if (node) node.style.transform = `translate(${targetOx * e}px, ${targetOy * e}px)`
       if (t < 1) rafRef.current = requestAnimationFrame(tick)
       else rafRef.current = null
     }
@@ -680,7 +680,7 @@ function TranslateByProblem({
     setDy(axis === 'x' ? lockedDy : null)
     setActive(axis === 'y' ? 'y' : 'x')
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-    setOffset({ ox: 0, oy: 0 })
+    if (moverRef.current) moverRef.current.style.transform = 'translate(0px, 0px)'
   }
 
   const check = () => dx === step.targetDx && dy === step.targetDy
@@ -710,10 +710,9 @@ function TranslateByProblem({
         <ShapeGlyph shape={goal} color="#64748b" dashed />
         <ShapeGlyph shape={step.shape} color="#1e3a5f" opacity={0.5} />
         <g
+          ref={moverRef}
           className="translate-mover"
-          style={{
-            transform: `translate(${offset.ox}px, ${offset.oy}px)`,
-          }}
+          style={{ transform: initialTransform }}
         >
           <ShapeGlyph shape={step.shape} color="#38bdf8" />
         </g>

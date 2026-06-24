@@ -16,7 +16,6 @@ import { LessonCompleteScreen } from '../components/lesson/LessonCompleteScreen'
 import { LessonEngine, type LessonEngineMode } from '../components/lesson/LessonEngine'
 import { useAuth } from '../context/AuthContext'
 import {
-  applyLeaveLessonPenalty,
   finishLessonWithRewards,
   getLessonProgress,
   type LessonFinishResult,
@@ -218,7 +217,6 @@ export function LessonPage() {
 
   if (phase === 'lesson-check') {
     const exitToHome = () => {
-      if (user) void applyLeaveLessonPenalty(user.uid)
       navigate('/')
     }
     if (lesson.interactiveCheck && lesson.interactiveCheck.length > 0) {
