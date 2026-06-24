@@ -8,6 +8,12 @@ import './LessonUI.css'
 export interface TranslationCheckFinishPayload {
   results: { questionId: string; correct: boolean }[]
   perfect: boolean
+  /**
+   * True only when the learner actually completed the check (got every
+   * question right, including via review). Skipping out leaves this false, and
+   * the lesson is NOT marked complete.
+   */
+  passed: boolean
 }
 
 interface TranslationCheckEngineProps {
@@ -161,7 +167,8 @@ function CheckQuestionView({
       {feedback === 'wrong' && (
         <div className="action-bar">
           <div className="feedback-banner wrong">
-            Not quite — here&rsquo;s the correct slide ({question.targetDx}, {question.targetDy}):
+            Not quite. Here&rsquo;s how to solve it — the correct slide is ({question.targetDx},{' '}
+            {question.targetDy}):
           </div>
           <WhyExplanation text={question.why} />
           <button type="button" className="btn primary full" onClick={() => onDone(false)}>
@@ -242,44 +249,54 @@ export function TranslationCheckEngine({
   }
 
   if (phase === 'summary') {
+    const wrongCount = questions.length - correctCount
     return (
       <div className="lesson-engine">
         <CheckHeader questions={questions} results={results} currentId={null} onExit={onExit} />
         <div className="lesson-body">
           <h1 className="lesson-step-title">Lesson check complete</h1>
           <p className="lesson-prompt">
-            You got {correctCount} of {questions.length} correct.
+            You got <strong>{correctCount} right</strong> and <strong>{wrongCount} wrong</strong> out
+            of {questions.length}.
           </p>
-          {perfect && (
-            <div className="reward-callout">
-              <span className="reward-callout-title">Perfect run! 🎉</span>
-              <span>You earned bonus XP and a streak saver 🛡️ for getting all {questions.length} right.</span>
-            </div>
-          )}
-          <div className="action-bar">
-            {wrongQuestions.length > 0 ? (
-              <>
+          {perfect ? (
+            <>
+              <div className="reward-callout">
+                <span className="reward-callout-title">Perfect run! 🎉</span>
+                <span>
+                  You earned bonus XP and a streak saver 🛡️ for getting all {questions.length} right.
+                </span>
+              </div>
+              <div className="action-bar">
+                <button
+                  type="button"
+                  className="btn primary full"
+                  onClick={() => onFinish({ results, perfect: true, passed: true })}
+                >
+                  Finish &amp; pass lesson
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="lesson-prompt muted">
+                Review the ones you missed, or skip ahead — but you only pass the lesson once every
+                question is correct.
+              </p>
+              <div className="action-bar">
                 <button type="button" className="btn primary full" onClick={startReview}>
-                  Review mistakes
+                  Review questions
                 </button>
                 <button
                   type="button"
                   className="btn secondary full"
                   onClick={() => setPhase('retry-prompt')}
                 >
-                  Skip review
+                  Skip
                 </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="btn primary full"
-                onClick={() => onFinish({ results, perfect })}
-              >
-                Finish
-              </button>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     )
@@ -321,21 +338,41 @@ export function TranslationCheckEngine({
       <CheckHeader questions={questions} results={results} currentId={null} onExit={onExit} />
       <div className="lesson-body">
         <h1 className="lesson-step-title">Skill check finished</h1>
-        <p className="lesson-prompt">
-          You got {correctCount} of {questions.length}. Want to try the whole check again?
-        </p>
-        <div className="action-bar">
-          <button type="button" className="btn primary full" onClick={retry}>
-            Retry lesson check
-          </button>
-          <button
-            type="button"
-            className="btn secondary full"
-            onClick={() => onFinish({ results, perfect })}
-          >
-            Skip
-          </button>
-        </div>
+        {perfect ? (
+          <>
+            <p className="lesson-prompt">
+              Nice — you fixed every question. You got all {questions.length} right!
+            </p>
+            <div className="action-bar">
+              <button
+                type="button"
+                className="btn primary full"
+                onClick={() => onFinish({ results, perfect: true, passed: true })}
+              >
+                Finish &amp; pass lesson
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="lesson-prompt">
+              You got {correctCount} of {questions.length}. Redo the check to get them all and pass —
+              skipping won&rsquo;t complete the lesson.
+            </p>
+            <div className="action-bar">
+              <button type="button" className="btn primary full" onClick={retry}>
+                Redo lesson check
+              </button>
+              <button
+                type="button"
+                className="btn secondary full"
+                onClick={() => onFinish({ results, perfect: false, passed: false })}
+              >
+                Skip (don&rsquo;t pass)
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

@@ -143,6 +143,14 @@ export function LessonPage() {
   const handleInteractiveCheckFinish = async (payload: TranslationCheckFinishPayload) => {
     if (!user || !lesson) return
 
+    // Skipping the lesson check does not pass the lesson. Progress was already
+    // saved past the content steps, so the learner returns straight to the
+    // check next time — no XP, no streak, lesson stays incomplete.
+    if (!payload.passed) {
+      navigate('/')
+      return
+    }
+
     const flowSteps = getLessonFlowSteps(lesson)
     const questions = lesson.interactiveCheck ?? []
     const result = await finishLessonWithRewards(
