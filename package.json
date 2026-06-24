@@ -1,0 +1,48 @@
+{
+  "name": "brilliant-algebra",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20 <25"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "deploy": "npm run build && firebase deploy --only hosting,firestore:rules",
+    "firebase:login": "firebase login --reauth",
+    "firebase:login:manual": "firebase login --reauth --no-localhost",
+    "firebase:logout": "firebase logout",
+    "firebase:whoami": "firebase login:list",
+    "firebase:projects": "firebase projects:list",
+    "firebase:use": "firebase use"
+  },
+  "dependencies": {
+    "firebase": "^11.10.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.1.2",
+    "dotenv": "^16.4.7",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "firebase-admin": "^13.0.2",
+    "firebase-tools": "^15.22.1",
+    "globals": "^17.6.0",
+    "tsx": "^4.19.2",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "uuid": "^11.0.5",
+    "vite": "^8.0.12"
+  }
+}

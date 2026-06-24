@@ -1,0 +1,180 @@
+import type { Lesson } from '../../types/lesson'
+
+export const polynomialsLesson: Lesson = {
+  id: 'polynomials',
+  title: 'Polynomials',
+  description:
+    'Combine like terms, multiply binomials with FOIL, and factor back again.',
+  subject: 'Polynomials',
+  order: 6,
+  region: 'Polynomial Forest',
+  icon: '🌲',
+  estimatedMinutes: 10,
+  steps: [
+    {
+      id: 'conf-1',
+      type: 'confidence',
+      title: 'Quick check',
+      question: 'Have you multiplied (x + 2)(x + 3) before?',
+    },
+    {
+      id: 'concept-terms',
+      type: 'concept',
+      title: 'Terms and degree',
+      body:
+        'A polynomial is a sum of terms like 3x⁴ + 2x − 5. The degree is the highest exponent. "Like terms" have the same variable and exponent, so 2x and 3x are like terms but 2x and 2x² are not. You can only add like terms.',
+    },
+    {
+      id: 'mc-degree',
+      type: 'multiple-choice',
+      title: 'Find the degree',
+      prompt: 'What is the degree of 3x⁴ + 2x − 7?',
+      options: ['4', '3', '2', '7'],
+      correctIndex: 0,
+      why: 'The degree is the highest exponent, which is 4.',
+      hint: 'Look for the largest exponent on x.',
+    },
+    {
+      id: 'combine-1',
+      type: 'number-input',
+      title: 'Combine like terms',
+      prompt: 'Simplify 2x + 3x. The result is ?x — enter the number.',
+      answers: ['5'],
+      inputLabel: '?',
+      why: '2x + 3x = 5x because 2 + 3 = 5.',
+      hint: 'Add the coefficients of the like terms.',
+    },
+    {
+      id: 'concept-foil',
+      type: 'concept',
+      title: 'Multiplying with FOIL',
+      body:
+        'To multiply two binomials, use FOIL: First, Outer, Inner, Last. For (x + 2)(x + 3): First x·x = x², Outer x·3 = 3x, Inner 2·x = 2x, Last 2·3 = 6. Combine the middle terms: x² + 5x + 6.',
+    },
+    {
+      id: 'foil-1',
+      type: 'number-input',
+      title: 'Use FOIL',
+      prompt: '(x + 2)(x + 3) = x² + ?x + 6. Enter the missing middle coefficient.',
+      answers: ['5'],
+      inputLabel: '?',
+      why: 'Outer + Inner = 3x + 2x = 5x, so the middle term is 5x.',
+      hint: 'Add the Outer and Inner products.',
+    },
+    {
+      id: 'concept-factor',
+      type: 'concept',
+      title: 'Factoring back',
+      body:
+        'Factoring reverses FOIL. To factor x² + 5x + 6, find two numbers that multiply to 6 (the last term) and add to 5 (the middle). Those are 2 and 3, so x² + 5x + 6 = (x + 2)(x + 3).',
+    },
+    {
+      id: 'mc-factor',
+      type: 'multiple-choice',
+      title: 'Factor it',
+      prompt: 'Factor x² + 5x + 6.',
+      options: ['(x + 2)(x + 3)', '(x + 1)(x + 6)', '(x − 2)(x − 3)', '(x + 5)(x + 1)'],
+      correctIndex: 0,
+      why: '2 and 3 multiply to 6 and add to 5, so it factors as (x + 2)(x + 3).',
+      hint: 'Two numbers that multiply to 6 and add to 5.',
+    },
+    {
+      id: 'complete',
+      type: 'complete',
+      title: 'Lesson complete!',
+      message: 'You combined like terms, multiplied with FOIL, and factored quadratics.',
+      discovery:
+        'Factoring is just FOIL run backwards — find two numbers that multiply to the last term and add to the middle.',
+    },
+  ],
+  lessonCheck: [
+    {
+      id: 'lc-1',
+      title: 'Question 1 of 3',
+      prompt: 'Simplify 4x + 5x. The result is ?x — enter the number.',
+      answers: ['9'],
+      hint: 'Add the coefficients.',
+      why: '4x + 5x = 9x.',
+      variants: [
+        {
+          prompt: 'Simplify 7x − 2x. The result is ?x — enter the number.',
+          answers: ['5'],
+          hint: 'Subtract the coefficients of the like terms.',
+          why: '7x − 2x = 5x.',
+        },
+        {
+          prompt: 'Simplify 3x + 8x. The result is ?x — enter the number.',
+          answers: ['11'],
+          hint: 'Add the coefficients since both are x terms.',
+          why: '3x + 8x = 11x.',
+        },
+      ],
+    },
+    {
+      id: 'lc-2',
+      title: 'Question 2 of 3',
+      prompt: '(x + 1)(x + 4) = x² + ?x + 4. Enter the missing middle coefficient.',
+      answers: ['5'],
+      hint: 'Outer + Inner = 4x + 1x.',
+      why: '4x + 1x = 5x, so the middle term is 5x.',
+      variants: [
+        {
+          prompt: '(x + 2)(x + 3) = x² + ?x + 6. Enter the missing middle coefficient.',
+          answers: ['5'],
+          hint: 'Outer + Inner = 3x + 2x.',
+          why: '3x + 2x = 5x, so the middle term is 5x.',
+        },
+        {
+          prompt: '(x + 1)(x + 6) = x² + ?x + 6. Enter the missing middle coefficient.',
+          answers: ['7'],
+          hint: 'Outer + Inner = 6x + 1x.',
+          why: '6x + 1x = 7x, so the middle term is 7x.',
+        },
+      ],
+    },
+    {
+      id: 'lc-3',
+      title: 'Question 3 of 3',
+      prompt: 'Factor x² + 7x + 10 as (x + a)(x + b). Enter a, b (e.g. 2, 5).',
+      answers: ['2,5', '5,2'],
+      hint: 'Two numbers that multiply to 10 and add to 7.',
+      why: '2 and 5 multiply to 10 and add to 7, so (x + 2)(x + 5).',
+      variants: [
+        {
+          prompt: 'Factor x² + 8x + 15 as (x + a)(x + b). Enter a, b (e.g. 3, 5).',
+          answers: ['3,5', '5,3'],
+          hint: 'Two numbers that multiply to 15 and add to 8.',
+          why: '3 and 5 multiply to 15 and add to 8, so (x + 3)(x + 5).',
+        },
+        {
+          prompt: 'Factor x² + 6x + 8 as (x + a)(x + b). Enter a, b (e.g. 2, 4).',
+          answers: ['2,4', '4,2'],
+          hint: 'Two numbers that multiply to 8 and add to 6.',
+          why: '2 and 4 multiply to 8 and add to 6, so (x + 2)(x + 4).',
+        },
+      ],
+    },
+  ],
+  practiceSteps: [
+    {
+      id: 'p-foil',
+      type: 'number-input',
+      title: 'Practice: FOIL',
+      prompt: '(x + 4)(x + 2) = x² + ?x + 8. Enter the missing coefficient.',
+      answers: ['6'],
+      inputLabel: '?',
+      why: 'Outer + Inner = 2x + 4x = 6x.',
+      hint: 'Add the Outer and Inner products.',
+    },
+    {
+      id: 'p-factor',
+      type: 'multiple-choice',
+      title: 'Practice: Factor',
+      prompt: 'Factor x² + 6x + 8.',
+      options: ['(x + 2)(x + 4)', '(x + 1)(x + 8)', '(x + 3)(x + 5)', '(x − 2)(x − 4)'],
+      correctIndex: 0,
+      why: '2 and 4 multiply to 8 and add to 6.',
+      hint: 'Multiply to 8, add to 6.',
+    },
+  ],
+}
