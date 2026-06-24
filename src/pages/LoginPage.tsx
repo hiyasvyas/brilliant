@@ -31,7 +31,16 @@ export function LoginPage() {
     try {
       await signInWithGoogle()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google sign-in failed')
+      const code = (err as { code?: string }).code ?? ''
+      const message =
+        code === 'auth/unauthorized-domain'
+          ? 'This site isn’t authorized for Google sign-in yet. Add this domain under Firebase Authentication → Settings → Authorized domains.'
+          : code === 'auth/operation-not-allowed'
+            ? 'Google sign-in is disabled. Enable it in Firebase Authentication → Sign-in method.'
+            : err instanceof Error
+              ? err.message
+              : 'Google sign-in failed'
+      setError(message)
     } finally {
       setLoading(false)
     }

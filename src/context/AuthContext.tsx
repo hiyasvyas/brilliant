@@ -121,9 +121,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await signInWithRedirect(auth, provider)
       return
     }
-    const cred = await signInWithPopup(auth, provider)
-    const p = await upsertUserProfile(cred.user.uid, displayNameFor(cred.user))
-    setProfile(p)
+    try {
+      const cred = await signInWithPopup(auth, provider)
+      const p = await upsertUserProfile(cred.user.uid, displayNameFor(cred.user))
+      setProfile(p)
+    } catch (err) {
+      // When the popup is blocked or can't run here, fall back to a full-page
+      // redirect instead of silently failing.
+      const code = (err as { code?: string }).code ?? ''
+      if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/popup-closed-by-user' ||
+        code === 'auth/cancelled-popup-request' ||
+        code === 'auth/operation-not-supported-in-this-environment'
+      ) {
+        await signInWithRedirect(auth, provider)
+        return
+      }
+      throw err
+    }
   }, [])
 
   const refreshProfile = useCallback(async () => {
