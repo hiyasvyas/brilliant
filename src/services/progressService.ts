@@ -4,16 +4,15 @@ import {
   setDoc,
   serverTimestamp,
 } from 'firebase/firestore'
-import type { LessonProgress, LessonStep, UserProfile } from '../types/lesson'
+import type { LessonProgress, UserProfile } from '../types/lesson'
 import { getFirestoreDb } from '../lib/firebase'
 import { applyLessonCompletion, normalizeProfile } from '../lib/streak'
 import {
-  calculateFirstCompletionXp,
+  levelForXp,
   resetWeeklyXpIfNeeded,
   XP_LEAVE_PENALTY,
-  XP_PERFECT_CHECK_BONUS,
+  XP_LESSON_COMPLETE_BONUS,
 } from '../lib/xp'
-import { MAX_STREAK_CHARGES } from '../lib/streak'
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   const snap = await getDoc(doc(getFirestoreDb(), 'users', uid))
@@ -121,21 +120,32 @@ export async function markLessonComplete(uid: string, lessonId: string): Promise
 
 export interface LessonFinishResult {
   profile: UserProfile
+  /** Total XP gained this completion (questions + completion bonus). */
   xpGained: number
+  /** XP from questions answered correctly first try with no help. */
+  questionXp: number
+  /** One-time lesson completion bonus included in xpGained. */
+  completionBonus: number
+  /** Total XP before this completion (for animating the level bar). */
+  previousTotalXp: number
   streakUpdated: boolean
   previousStreak: number
-  /** True when the learner aced the lesson check and earned a streak saver. */
-  streakSaverEarned: boolean
+  previousLevel: number
+  newLevel: number
+  /** Streak savers earned by leveling up during this completion. */
+  streakSaversGained: number
 }
 
-/** Award XP and streak on first full lesson completion (content + lesson check). */
+/**
+ * Award XP and streak on first full lesson completion. `questionXp` is the XP
+ * the learner earned live from first-try-correct answers (content + check);
+ * a completion bonus is added on top, and each level gained grants a streak
+ * saver.
+ */
 export async function finishLessonWithRewards(
   uid: string,
   lessonId: string,
-  lessonSteps: LessonStep[],
-  checkQuestions: { id: string }[],
-  checkResults: { questionId: string; correct: boolean }[],
-  opts: { perfectCheck?: boolean } = {},
+  questionXp: number,
 ): Promise<LessonFinishResult> {
   const ref = doc(getFirestoreDb(), 'users', uid)
   const snap = await getDoc(ref)
@@ -149,28 +159,34 @@ export async function finishLessonWithRewards(
 
   const wasAlreadyDone = current.lessonsCompleted.includes(lessonId)
   const previousStreak = current.streak
+  const previousTotalXp = current.totalXp
+  const previousLevel = levelForXp(previousTotalXp).level
 
   let profile = current
   let xpGained = 0
-  let streakSaverEarned = false
+  let completionBonus = 0
+  let streakSaversGained = 0
+  let newLevel = previousLevel
 
   if (!wasAlreadyDone) {
-    xpGained = calculateFirstCompletionXp(lessonSteps, checkQuestions, checkResults)
-    if (opts.perfectCheck) xpGained += XP_PERFECT_CHECK_BONUS
+    completionBonus = XP_LESSON_COMPLETE_BONUS
+    xpGained = Math.max(0, questionXp) + completionBonus
     const xpState = resetWeeklyXpIfNeeded(profile.weeklyXp, profile.xpWeekStart)
+    const newTotalXp = profile.totalXp + xpGained
     profile = {
       ...profile,
       weeklyXp: xpState.weeklyXp + xpGained,
       xpWeekStart: xpState.xpWeekStart,
-      totalXp: profile.totalXp + xpGained,
+      totalXp: newTotalXp,
       lessonsCompleted: [...profile.lessonsCompleted, lessonId],
     }
     profile = applyLessonCompletion(profile)
 
-    if (opts.perfectCheck) {
-      const boosted = Math.min(MAX_STREAK_CHARGES, profile.streakCharges + 1)
-      streakSaverEarned = true
-      profile = { ...profile, streakCharges: boosted }
+    // Every level gained awards one streak saver.
+    newLevel = levelForXp(newTotalXp).level
+    streakSaversGained = Math.max(0, newLevel - previousLevel)
+    if (streakSaversGained > 0) {
+      profile = { ...profile, streakCharges: profile.streakCharges + streakSaversGained }
     }
   }
 
@@ -194,9 +210,14 @@ export async function finishLessonWithRewards(
   return {
     profile,
     xpGained,
+    questionXp: wasAlreadyDone ? 0 : Math.max(0, questionXp),
+    completionBonus,
+    previousTotalXp,
     streakUpdated: !wasAlreadyDone && profile.streak !== previousStreak,
     previousStreak,
-    streakSaverEarned,
+    previousLevel,
+    newLevel,
+    streakSaversGained,
   }
 }
 

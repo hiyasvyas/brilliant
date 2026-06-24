@@ -1,8 +1,5 @@
 import type { UserProfile } from '../types/lesson'
 
-export const MAX_STREAK_CHARGES = 2
-export const CHARGE_PER_LESSON = 1
-
 export const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const
 
 export function dateKey(d = new Date()): string {
@@ -83,6 +80,7 @@ export function applyLessonCompletion(
         streak += 1
       } else if (gap > 1) {
         const missedDays = gap - 1
+        // Spend streak savers to cover missed days and keep the streak alive.
         if (streakCharges >= missedDays) {
           streakCharges -= missedDays
           streak += 1
@@ -92,7 +90,8 @@ export function applyLessonCompletion(
       }
     }
 
-    streakCharges = Math.min(MAX_STREAK_CHARGES, streakCharges + CHARGE_PER_LESSON)
+    // Streak savers are no longer granted per lesson — they are earned by
+    // leveling up (handled where XP is awarded).
     lastLessonCompleteDate = today
   }
 

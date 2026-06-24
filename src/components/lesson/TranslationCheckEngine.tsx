@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { TranslationCheckQuestion } from '../../types/lesson'
 import { TranslateByControl } from './TranslateByControl'
 import { WhyExplanation, type FeedbackState } from './LessonUI'
-import { XP_PER_CHECK_QUESTION } from '../../lib/xp'
+import { XP_PER_QUESTION } from '../../lib/xp'
 import './LessonUI.css'
 
 export interface TranslationCheckFinishPayload {
@@ -20,6 +20,8 @@ interface TranslationCheckEngineProps {
   questions: TranslationCheckQuestion[]
   onFinish: (payload: TranslationCheckFinishPayload) => void
   onExit: () => void
+  /** Called when a check question is solved correctly on the first try. */
+  onXpEarned?: (id: string, amount: number) => void
 }
 
 type Result = { questionId: string; correct: boolean }
@@ -36,7 +38,6 @@ function CheckHeader({
   currentId: string | null
   onExit: () => void
 }) {
-  const xp = results.filter((r) => r.correct).length * XP_PER_CHECK_QUESTION
   return (
     <header className="lesson-header check-header">
       <button type="button" className="back-btn" onClick={onExit}>
@@ -55,7 +56,6 @@ function CheckHeader({
           return <span key={q.id} className={cls} />
         })}
       </div>
-      <span className="check-xp">⚡ {xp} XP</span>
     </header>
   )
 }
@@ -65,10 +65,12 @@ function CheckQuestionView({
   question,
   label,
   onDone,
+  onEarn,
 }: {
   question: TranslationCheckQuestion
   label: string
   onDone: (correct: boolean) => void
+  onEarn?: (id: string, amount: number) => void
 }) {
   const [dx, setDx] = useState<number | null>(null)
   const [dy, setDy] = useState<number | null>(null)
@@ -82,6 +84,7 @@ function CheckQuestionView({
   const handleCheck = () => {
     setAnsweredCorrect(isCorrect)
     setFeedback(isCorrect ? 'correct' : 'wrong')
+    if (isCorrect) onEarn?.(question.id, XP_PER_QUESTION)
   }
 
   if (showWhy) {
@@ -184,6 +187,7 @@ export function TranslationCheckEngine({
   questions,
   onFinish,
   onExit,
+  onXpEarned,
 }: TranslationCheckEngineProps) {
   const [phase, setPhase] = useState<Phase>('quiz')
   const [qIndex, setQIndex] = useState(0)
@@ -243,7 +247,13 @@ export function TranslationCheckEngine({
     return (
       <div className="lesson-engine">
         <CheckHeader questions={questions} results={results} currentId={q.id} onExit={onExit} />
-        <CheckQuestionView key={q.id} question={q} label="Lesson check" onDone={recordAndAdvance} />
+        <CheckQuestionView
+          key={q.id}
+          question={q}
+          label="Lesson check"
+          onDone={recordAndAdvance}
+          onEarn={onXpEarned}
+        />
       </div>
     )
   }

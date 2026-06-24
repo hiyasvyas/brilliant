@@ -34,22 +34,34 @@ export function StatBar({ profile }: { profile: UserProfile }) {
             <div className="stat-help-backdrop" onClick={() => setHelpOpen(false)} aria-hidden="true" />
             <div className="stat-help-popover" role="dialog" aria-label="Icon guide">
               <div className="stat-help-row">
+                <span className="stat-help-icon">⭐</span>
+                <div>
+                  <strong>XP</strong>
+                  <p>
+                    Experience points that track your learning and raise your level. You earn
+                    <strong> 20 XP</strong> for every question you answer correctly on the first try
+                    (using a hint or help earns 0), plus a <strong>40 XP</strong> bonus for finishing
+                    a lesson.
+                  </p>
+                </div>
+              </div>
+              <div className="stat-help-row">
+                <span className="stat-help-icon">🏆</span>
+                <div>
+                  <strong>Levels</strong>
+                  <p>
+                    Every {forNext} XP raises your level. Each new level is a milestone — and you earn
+                    a streak saver every time you level up.
+                  </p>
+                </div>
+              </div>
+              <div className="stat-help-row">
                 <span className="stat-help-icon">⚡</span>
                 <div>
                   <strong>Streak saver</strong>
                   <p>
                     A backup that automatically protects your daily streak if you miss a day, so it
-                    won&apos;t reset to zero. Earn more streak savers by completing lessons.
-                  </p>
-                </div>
-              </div>
-              <div className="stat-help-row">
-                <span className="stat-help-icon">⭐</span>
-                <div>
-                  <strong>XP</strong>
-                  <p>
-                    Experience points that track your learning and raise your level. You earn XP by
-                    finishing lesson steps and answering check questions correctly.
+                    won&apos;t reset to zero. You earn one each time you level up.
                   </p>
                 </div>
               </div>

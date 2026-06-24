@@ -108,6 +108,104 @@ export function DraggablePoint({
   )
 }
 
+interface DraggableShapeProps {
+  /** Shape in graph coords (point, segment, or polygon). */
+  shape: [number, number][]
+  /** Current translation applied to the shape. */
+  dx: number
+  dy: number
+  color?: string
+  onMove: (dx: number, dy: number) => void
+  size?: number
+  range?: number
+}
+
+/**
+ * A whole shape the learner grabs anywhere and drags as one piece. The applied
+ * translation snaps to integer grid units and is reported back via onMove.
+ */
+export function DraggableShape({
+  shape,
+  dx,
+  dy,
+  color = '#38bdf8',
+  onMove,
+  size = GRAPH_SIZE,
+  range = GRAPH_RANGE,
+}: DraggableShapeProps) {
+  const anchor = useRef<{ gx: number; gy: number; dx: number; dy: number } | null>(null)
+  const translated = shape.map(([x, y]) => [x + dx, y + dy] as [number, number])
+  const pts = translated.map(([x, y]) => toSvg(x, y, size, range))
+  const isPoint = shape.length === 1
+  const isClosed = shape.length >= 3
+
+  const gridFromEvent = (e: PointerEvent) => {
+    const svg = (e.currentTarget as SVGElement).ownerSVGElement
+    if (!svg) return null
+    const rect = svg.getBoundingClientRect()
+    const px = ((e.clientX - rect.left) / rect.width) * size
+    const py = ((e.clientY - rect.top) / rect.height) * size
+    return fromSvg(px, py, size, range)
+  }
+
+  const path =
+    pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.sx} ${p.sy}`).join(' ') + (isClosed ? ' Z' : '')
+
+  return (
+    <g
+      style={{ cursor: 'grab', touchAction: 'none' }}
+      onPointerDown={(e) => {
+        const g = gridFromEvent(e)
+        if (!g) return
+        anchor.current = { gx: g.x, gy: g.y, dx, dy }
+        ;(e.target as Element).setPointerCapture(e.pointerId)
+      }}
+      onPointerMove={(e) => {
+        if (!anchor.current) return
+        const g = gridFromEvent(e)
+        if (!g) return
+        onMove(anchor.current.dx + (g.x - anchor.current.gx), anchor.current.dy + (g.y - anchor.current.gy))
+      }}
+      onPointerUp={() => {
+        anchor.current = null
+      }}
+    >
+      {isPoint ? (
+        <circle cx={pts[0]!.sx} cy={pts[0]!.sy} r={22} fill="transparent" />
+      ) : (
+        <path
+          d={path}
+          fill={isClosed ? 'transparent' : 'none'}
+          stroke="transparent"
+          strokeWidth={30}
+          strokeLinejoin="round"
+        />
+      )}
+
+      {isPoint ? (
+        <>
+          <circle cx={pts[0]!.sx} cy={pts[0]!.sy} r={18} fill={color} opacity={0.25} />
+          <circle cx={pts[0]!.sx} cy={pts[0]!.sy} r={9} fill={color} stroke="#fff" strokeWidth={2} />
+        </>
+      ) : (
+        <>
+          <path
+            d={path}
+            fill={isClosed ? color : 'none'}
+            fillOpacity={isClosed ? 0.2 : 0}
+            stroke={color}
+            strokeWidth={2.5}
+            strokeLinejoin="round"
+          />
+          {pts.map((p, i) => (
+            <circle key={i} cx={p.sx} cy={p.sy} r={5} fill={color} stroke="#fff" strokeWidth={1.5} />
+          ))}
+        </>
+      )}
+    </g>
+  )
+}
+
 interface StaticPointProps {
   x: number
   y: number
@@ -399,17 +497,21 @@ export function GraphView({ spec, size = GRAPH_SIZE }: { spec: GraphSpec; size?:
 
 export function TranslationDemo({ size = GRAPH_SIZE }: { size?: number }) {
   const shape: [number, number][] = [
-    [0, 0],
-    [2, 0],
-    [1, 1.5],
+    [-1, -1],
+    [1, -1],
+    [0, 1],
   ]
   const moved = shape.map(([x, y]) => [x + 3, y + 1] as [number, number])
   return (
     <CoordinatePlane size={size}>
-      <Polygon points={shape} color="#64748b" />
-      <Polygon points={moved} color="#38bdf8" dashed />
-      <StaticPoint x={0} y={0} color="#64748b" label="start" size={size} />
-      <StaticPoint x={3} y={1} color="#38bdf8" label="+(3,1)" size={size} />
+      {/* faint pre-image */}
+      <ShapeGlyph shape={shape} color="#475569" size={size} />
+      {/* dashed target (the image) */}
+      <ShapeGlyph shape={moved} color="#38bdf8" dashed size={size} />
+      {/* a copy that slides along the arrow on a loop */}
+      <g className="demo-mover">
+        <ShapeGlyph shape={shape} color="#38bdf8" size={size} />
+      </g>
     </CoordinatePlane>
   )
 }

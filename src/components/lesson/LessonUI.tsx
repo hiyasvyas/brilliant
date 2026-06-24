@@ -19,6 +19,23 @@ export function ProgressBar({ current, total }: ProgressBarProps) {
 
 export type FeedbackState = 'idle' | 'wrong' | 'correct'
 
+/**
+ * Drives the adaptive wrong-answer flow inside a lesson. When present, a wrong
+ * answer no longer just says "try again" — it explains why, then offers either
+ * a similar question of the same type or (once the learner has missed this type
+ * enough times) a deeper remediation lesson.
+ */
+export interface AdaptiveWrong {
+  /** Explanation of the question the learner just missed. */
+  why: string
+  /** True when the wrong-streak has hit the remediation threshold. */
+  atThreshold: boolean
+  /** Serve another similar question of the same type. */
+  onTrySimilar: () => void
+  /** Open the deeper remediation lesson. */
+  onSeeLesson: () => void
+}
+
 interface ActionBarProps {
   feedback: FeedbackState
   onCheck: () => void
@@ -29,6 +46,8 @@ interface ActionBarProps {
   checkDisabled?: boolean
   /** Teaching insight surfaced automatically when the answer is correct. */
   insight?: string
+  /** When set, wrong answers drive the adaptive similar-question / remediation flow. */
+  adaptive?: AdaptiveWrong
 }
 
 export function ActionBar({
@@ -40,6 +59,7 @@ export function ActionBar({
   onContinue,
   checkDisabled,
   insight,
+  adaptive,
 }: ActionBarProps) {
   if (feedback === 'correct') {
     return (
@@ -61,6 +81,23 @@ export function ActionBar({
   }
 
   if (feedback === 'wrong') {
+    if (adaptive) {
+      return (
+        <div className="action-bar">
+          <div className="feedback-banner wrong">Not quite — here&rsquo;s why:</div>
+          <WhyExplanation text={adaptive.why} />
+          {adaptive.atThreshold ? (
+            <button type="button" className="btn primary full" onClick={adaptive.onSeeLesson}>
+              Let&rsquo;s break this down
+            </button>
+          ) : (
+            <button type="button" className="btn primary full" onClick={adaptive.onTrySimilar}>
+              Try a similar question
+            </button>
+          )}
+        </div>
+      )
+    }
     return (
       <div className="action-bar">
         <div className="feedback-banner wrong">
@@ -186,6 +223,41 @@ export function ResetLessonButton({ onClick }: { onClick: () => void }) {
       <button type="button" className="btn ghost full" onClick={onClick}>
         Reset lesson
       </button>
+    </div>
+  )
+}
+
+/** Floating XP counter shown in the top-right corner during a lesson. */
+export function XpHud({ total, bumpKey }: { total: number; bumpKey: number }) {
+  return (
+    <div className="xp-hud" aria-live="polite" aria-label={`${total} total XP`}>
+      <span className="xp-hud-icon">⭐</span>
+      <span className="xp-hud-value" key={bumpKey}>
+        {total}
+      </span>
+      <span className="xp-hud-unit">XP</span>
+    </div>
+  )
+}
+
+/** Bursts of stars that fly toward the XP counter when a question earns XP. */
+export function XpStarBurst({ bursts }: { bursts: number[] }) {
+  if (bursts.length === 0) return null
+  return (
+    <div className="xp-burst-layer" aria-hidden="true">
+      {bursts.map((id) => (
+        <div className="xp-burst" key={id}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <span
+              className="xp-burst-star"
+              key={i}
+              style={{ left: `${(i - 2.5) * 16}px`, animationDelay: `${i * 55}ms` }}
+            >
+              ⭐
+            </span>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }

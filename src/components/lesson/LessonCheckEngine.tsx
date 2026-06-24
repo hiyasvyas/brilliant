@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Lesson, LessonCheckQuestion, LessonCheckResult } from '../../types/lesson'
-import { checkTextAnswer } from '../../lib/xp'
+import { checkTextAnswer, XP_PER_QUESTION } from '../../lib/xp'
 import {
   ActionBar,
   HelpHint,
@@ -18,11 +18,13 @@ interface LessonCheckEngineProps {
   lesson: Lesson
   onFinish: (payload: LessonCheckFinishPayload) => void
   onExit: () => void
+  /** Called when a check question is answered correctly on the first try. */
+  onXpEarned?: (id: string, amount: number) => void
 }
 
 type CheckPhase = 'quiz' | 'summary' | 'review' | 'retry-prompt'
 
-export function LessonCheckEngine({ lesson, onFinish, onExit }: LessonCheckEngineProps) {
+export function LessonCheckEngine({ lesson, onFinish, onExit, onXpEarned }: LessonCheckEngineProps) {
   const questions = lesson.lessonCheck
   const [phase, setPhase] = useState<CheckPhase>('quiz')
   const [questionIndex, setQuestionIndex] = useState(0)
@@ -64,6 +66,8 @@ export function LessonCheckEngine({ lesson, onFinish, onExit }: LessonCheckEngin
     if (!activeQuestion) return
     const ok = checkTextAnswer(answer, activeQuestion.answers)
     setFeedback(ok ? 'correct' : 'wrong')
+    // First-try correct on the original question (not a recovery variant) earns XP.
+    if (ok && !onVariant && mainQuestion) onXpEarned?.(mainQuestion.id, XP_PER_QUESTION)
   }
 
   /** Record the outcome for the main question and move to the next one. */

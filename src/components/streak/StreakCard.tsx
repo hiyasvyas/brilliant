@@ -52,8 +52,8 @@ export function StreakCard({ profile }: StreakCardProps) {
       </div>
 
       <p className="streak-hint">
-        Complete a full lesson each day to fill your week. Earn ⚡ charges to protect your streak
-        if you miss a day.
+        Complete a full lesson each day to fill your week. Level up to earn ⚡ streak savers that
+        protect your streak if you miss a day.
       </p>
     </section>
   )

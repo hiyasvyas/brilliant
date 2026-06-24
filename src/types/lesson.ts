@@ -14,6 +14,7 @@ export type StepType =
   | 'find-vertex'
   | 'translation-input'
   | 'translate-by'
+  | 'drag-shape'
   | 'complete'
 
 /** Declarative description of what to draw on a coordinate plane. */
@@ -67,6 +68,26 @@ export interface GraphPoint {
   label?: string
 }
 
+/**
+ * A deeper "let's break this down" lesson shown inside a lesson (not a lesson
+ * check) after a learner gets the same type of question wrong several times in
+ * a row. It re-teaches the concept behind the questions they missed and gives
+ * concrete tips for approaching that question type, before the learner retries
+ * a fresh question of the same type to master the concept.
+ */
+export interface Remediation {
+  /** Headline for the deeper lesson, e.g. "Let's master two-step equations". */
+  title: string
+  /** Main re-teaching explanation. Can span a few sentences. */
+  body: string
+  /** Short, actionable tips & tricks for tackling this question type. */
+  tips: string[]
+  /** Optional graph drawn above the tips to illustrate the concept. */
+  graph?: GraphSpec
+  /** Optional built-in demo visual (reuses the concept-step demos). */
+  visual?: 'translation' | 'vertex'
+}
+
 export interface BaseStep {
   id: string
   type: StepType
@@ -77,6 +98,20 @@ export interface BaseStep {
    * into a teaching moment, separate from the on-demand procedural `why`.
    */
   insight?: string
+  /**
+   * Adaptive retry loop (lessons only — lesson checks are separate). When the
+   * learner answers wrong, the engine serves one of these "similar" questions
+   * of the same type (same skill, fresh numbers) instead of the identical
+   * problem. They are cycled through as needed.
+   */
+  variants?: LessonStep[]
+  /**
+   * Deeper lesson shown after the learner gets this question type wrong
+   * `REMEDIATION_THRESHOLD` (3) times in a row. After reading it, the learner
+   * retries a fresh question of the same type. If they get it right they move
+   * on; otherwise the wrong-counter resets and the loop repeats.
+   */
+  remediation?: Remediation
 }
 
 export interface ConfidenceStep extends BaseStep {
@@ -233,6 +268,30 @@ export interface TranslateByStep extends BaseStep {
   hint: string
 }
 
+/**
+ * Direct-manipulation translation: the learner grabs an entire shape (a point,
+ * a segment, or a polygon) and drags it as one piece onto the translated
+ * position. Unlike `translate-by`, there is no number palette — the learner
+ * physically slides the figure and it snaps to the grid.
+ */
+export interface DragShapeStep extends BaseStep {
+  type: 'drag-shape'
+  prompt: string
+  /** Shape to drag: a single point, a 2-point segment, or a 3+ point polygon. */
+  shape: [number, number][]
+  /** Translation the learner must achieve by dragging the whole shape. */
+  targetDx: number
+  targetDy: number
+  /**
+   * Whether to show the dashed target outline. Defaults to true (a "match the
+   * outline" task). Set false for "draw the image yourself" tasks where the
+   * learner must work out where the figure lands with no outline to copy.
+   */
+  showTarget?: boolean
+  why: string
+  hint: string
+}
+
 export interface CompleteStep extends BaseStep {
   type: 'complete'
   message: string
@@ -255,6 +314,7 @@ export type LessonStep =
   | FindVertexStep
   | TranslationInputStep
   | TranslateByStep
+  | DragShapeStep
   | CompleteStep
 
 /**

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   getCompleteMessage,
@@ -7,13 +7,14 @@ import {
   getLessonFlowSteps,
   getNextLesson,
 } from '../content/lessons'
-import { LessonCheckEngine, type LessonCheckFinishPayload } from '../components/lesson/LessonCheckEngine'
+import { LessonCheckEngine } from '../components/lesson/LessonCheckEngine'
 import {
   TranslationCheckEngine,
   type TranslationCheckFinishPayload,
 } from '../components/lesson/TranslationCheckEngine'
 import { LessonCompleteScreen } from '../components/lesson/LessonCompleteScreen'
 import { LessonEngine, type LessonEngineMode } from '../components/lesson/LessonEngine'
+import { XpHud, XpStarBurst } from '../components/lesson/LessonUI'
 import { useAuth } from '../context/AuthContext'
 import {
   finishLessonWithRewards,
@@ -33,7 +34,7 @@ function clampStepIndex(index: number, stepCount: number): number {
 export function LessonPage() {
   const { lessonId } = useParams<{ lessonId: string }>()
   const lesson = lessonId ? getLessonById(lessonId) : undefined
-  const { user, refreshProfile } = useAuth()
+  const { user, profile, refreshProfile } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -45,6 +46,32 @@ export function LessonPage() {
   const [isCompleted, setIsCompleted] = useState(false)
   const [finishResult, setFinishResult] = useState<LessonFinishResult | null>(null)
   const [engineKey, setEngineKey] = useState(0)
+
+  // Live XP tracking for the in-lesson HUD + star animation. Total XP only
+  // changes when a lesson is finished (after which the HUD is hidden), so the
+  // saved profile total is a stable base to add live earnings onto.
+  const [earnedXp, setEarnedXp] = useState(0)
+  const [bursts, setBursts] = useState<number[]>([])
+  const earnedIdsRef = useRef<Set<string>>(new Set())
+
+  const handleXpEarned = useCallback((id: string, amount: number) => {
+    if (earnedIdsRef.current.has(id)) return
+    earnedIdsRef.current.add(id)
+    setEarnedXp((x) => x + amount)
+    const burstId = Date.now() + Math.random()
+    setBursts((b) => [...b, burstId])
+    window.setTimeout(() => {
+      setBursts((b) => b.filter((x) => x !== burstId))
+    }, 1200)
+  }, [])
+
+  const hudTotal = (profile?.totalXp ?? 0) + earnedXp
+  const xpOverlay = (
+    <>
+      <XpHud total={hudTotal} bumpKey={earnedXp} />
+      <XpStarBurst bursts={bursts} />
+    </>
+  )
 
   useEffect(() => {
     if (!lesson) return
@@ -123,17 +150,10 @@ export function LessonPage() {
       })
   }, [user, lesson, searchParams])
 
-  const handleCheckFinish = async (payload: LessonCheckFinishPayload) => {
+  const handleCheckFinish = async () => {
     if (!user || !lesson) return
 
-    const flowSteps = getLessonFlowSteps(lesson)
-    const result = await finishLessonWithRewards(
-      user.uid,
-      lesson.id,
-      flowSteps,
-      lesson.lessonCheck,
-      payload.results,
-    )
+    const result = await finishLessonWithRewards(user.uid, lesson.id, earnedXp)
     await refreshProfile()
     setFinishResult(result)
     setIsCompleted(true)
@@ -151,16 +171,7 @@ export function LessonPage() {
       return
     }
 
-    const flowSteps = getLessonFlowSteps(lesson)
-    const questions = lesson.interactiveCheck ?? []
-    const result = await finishLessonWithRewards(
-      user.uid,
-      lesson.id,
-      flowSteps,
-      questions.map((q) => ({ id: q.id })),
-      payload.results,
-      { perfectCheck: payload.perfect },
-    )
+    const result = await finishLessonWithRewards(user.uid, lesson.id, earnedXp)
     await refreshProfile()
     setFinishResult(result)
     setIsCompleted(true)
@@ -229,19 +240,27 @@ export function LessonPage() {
     }
     if (lesson.interactiveCheck && lesson.interactiveCheck.length > 0) {
       return (
-        <TranslationCheckEngine
-          questions={lesson.interactiveCheck}
-          onFinish={(payload) => void handleInteractiveCheckFinish(payload)}
-          onExit={exitToHome}
-        />
+        <>
+          {xpOverlay}
+          <TranslationCheckEngine
+            questions={lesson.interactiveCheck}
+            onFinish={(payload) => void handleInteractiveCheckFinish(payload)}
+            onExit={exitToHome}
+            onXpEarned={handleXpEarned}
+          />
+        </>
       )
     }
     return (
-      <LessonCheckEngine
-        lesson={lesson}
-        onFinish={(payload) => void handleCheckFinish(payload)}
-        onExit={exitToHome}
-      />
+      <>
+        {xpOverlay}
+        <LessonCheckEngine
+          lesson={lesson}
+          onFinish={() => void handleCheckFinish()}
+          onExit={exitToHome}
+          onXpEarned={handleXpEarned}
+        />
+      </>
     )
   }
 
@@ -255,9 +274,12 @@ export function LessonPage() {
         nextTitle={next?.title}
         profile={finishResult.profile}
         xpGained={finishResult.xpGained}
+        questionXp={finishResult.questionXp}
+        completionBonus={finishResult.completionBonus}
+        previousTotalXp={finishResult.previousTotalXp}
         streakUpdated={finishResult.streakUpdated}
         previousStreak={finishResult.previousStreak}
-        streakSaverEarned={finishResult.streakSaverEarned}
+        streakSaversGained={finishResult.streakSaversGained}
         onHome={() => navigate('/')}
         onNext={next ? () => navigate(`/lesson/${next.id}`) : undefined}
       />
@@ -265,38 +287,42 @@ export function LessonPage() {
   }
 
   return (
-    <LessonEngine
-      key={engineKey}
-      lesson={lesson}
-      mode={engineMode}
-      initialStepIndex={stepIndex}
-      initialResults={results}
-      onLessonStepsComplete={() => {
-        if (engineMode === 'normal' && !isCompleted) {
-          setPhase('lesson-check')
-        } else if (isCompleted) {
-          // Finished practice/review of a completed lesson → return to the lesson menu
+    <>
+      {xpOverlay}
+      <LessonEngine
+        key={engineKey}
+        lesson={lesson}
+        mode={engineMode}
+        initialStepIndex={stepIndex}
+        initialResults={results}
+        onXpEarned={handleXpEarned}
+        onLessonStepsComplete={() => {
+          if (engineMode === 'normal' && !isCompleted) {
+            setPhase('lesson-check')
+          } else if (isCompleted) {
+            // Finished practice/review of a completed lesson → return to the lesson menu
+            setEngineMode('normal')
+            setPhase('menu')
+          } else {
+            navigate('/')
+          }
+        }}
+        onExit={() => {
+          if (isCompleted && engineMode !== 'normal') {
+            // Leaving practice/review of a completed lesson → return to the lesson menu
+            setEngineMode('normal')
+            setPhase('menu')
+          } else {
+            navigate('/')
+          }
+        }}
+        onResetFromReview={() => {
           setEngineMode('normal')
-          setPhase('menu')
-        } else {
-          navigate('/')
-        }
-      }}
-      onExit={() => {
-        if (isCompleted && engineMode !== 'normal') {
-          // Leaving practice/review of a completed lesson → return to the lesson menu
-          setEngineMode('normal')
-          setPhase('menu')
-        } else {
-          navigate('/')
-        }
-      }}
-      onResetFromReview={() => {
-        setEngineMode('normal')
-        setStepIndex(0)
-        setResults([])
-        setEngineKey((k) => k + 1)
-      }}
-    />
+          setStepIndex(0)
+          setResults([])
+          setEngineKey((k) => k + 1)
+        }}
+      />
+    </>
   )
 }
