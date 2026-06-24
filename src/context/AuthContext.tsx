@@ -9,6 +9,7 @@ import {
 } from 'react'
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   EmailAuthProvider,
   getRedirectResult,
   onAuthStateChanged,
@@ -21,6 +22,7 @@ import {
   updatePassword,
   updateProfile,
   type User,
+  type UserCredential,
 } from 'firebase/auth'
 import { getFirebaseAuth, getGoogleProvider, isFirebaseConfigured } from '../lib/firebase'
 import {
@@ -30,6 +32,14 @@ import {
 } from '../services/progressService'
 import type { UserProfile } from '../types/lesson'
 
+export type AuthIntent = 'login' | 'signup'
+
+/** Error code thrown when someone tries to log in without having signed up. */
+export const NO_ACCOUNT_CODE = 'app/no-account'
+/** sessionStorage keys used to carry state across a full-page auth redirect. */
+const GOOGLE_INTENT_KEY = 'auth:googleIntent'
+export const REDIRECT_ERROR_KEY = 'auth:redirectError'
+
 interface AuthContextValue {
   user: User | null
   profile: UserProfile | null
@@ -37,7 +47,7 @@ interface AuthContextValue {
   configured: boolean
   signUp: (email: string, password: string, displayName: string) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
-  signInWithGoogle: () => Promise<void>
+  signInWithGoogle: (intent?: AuthIntent) => Promise<void>
   logOut: () => Promise<void>
   refreshProfile: () => Promise<void>
   changeUsername: (displayName: string) => Promise<void>
@@ -46,6 +56,12 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+
+function noAccountError(): Error & { code: string } {
+  const err = new Error('No account yet — please sign up first.') as Error & { code: string }
+  err.code = NO_ACCOUNT_CODE
+  return err
+}
 
 /**
  * Mobile browsers (especially iOS Safari and in-app webviews) routinely block
@@ -66,6 +82,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const configured = isFirebaseConfigured()
 
+  // An account counts as "signed up" only once it has a profile document. On a
+  // login attempt with no profile, we undo the just-created Google credential
+  // and ask the person to sign up; a signup intent creates the profile.
+  const finalizeGoogleUser = useCallback(
+    async (cred: UserCredential, intent: AuthIntent) => {
+      const auth = getFirebaseAuth()
+      const existing = await getUserProfile(cred.user.uid)
+      if (intent === 'login' && !existing) {
+        try {
+          await deleteUser(cred.user)
+        } catch {
+          await signOut(auth)
+        }
+        throw noAccountError()
+      }
+      const p = existing ?? (await upsertUserProfile(cred.user.uid, displayNameFor(cred.user)))
+      setProfile(p)
+    },
+    [],
+  )
+
   useEffect(() => {
     if (!configured) {
       setLoading(false)
@@ -74,25 +111,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const auth = getFirebaseAuth()
 
-    // Completes any in-flight mobile redirect sign-in; the resulting user is
-    // delivered through onAuthStateChanged below. Errors are surfaced quietly
-    // so a cancelled redirect doesn't crash the app shell.
-    void getRedirectResult(auth).catch(() => undefined)
+    // Completes any in-flight mobile redirect sign-in, applying the same
+    // signup-first gate the popup path uses. A "no account" rejection is
+    // stashed so the login page can show it after the redirect reload.
+    getRedirectResult(auth)
+      .then((cred) => {
+        if (!cred) return
+        const intent =
+          (sessionStorage.getItem(GOOGLE_INTENT_KEY) as AuthIntent | null) ?? 'login'
+        sessionStorage.removeItem(GOOGLE_INTENT_KEY)
+        return finalizeGoogleUser(cred, intent)
+      })
+      .catch((err) => {
+        if ((err as { code?: string }).code === NO_ACCOUNT_CODE) {
+          sessionStorage.setItem(REDIRECT_ERROR_KEY, NO_ACCOUNT_CODE)
+        }
+      })
 
     return onAuthStateChanged(auth, async (u: User | null) => {
       setUser(u)
-      if (u) {
-        // Create the profile doc if it's missing (e.g. a first Google sign-in
-        // via redirect, where the upsert can't run in the calling tab).
-        let p = await getUserProfile(u.uid)
-        if (!p) p = await upsertUserProfile(u.uid, displayNameFor(u))
-        setProfile(p)
-      } else {
-        setProfile(null)
-      }
+      setProfile(u ? await getUserProfile(u.uid) : null)
       setLoading(false)
     })
-  }, [configured])
+  }, [configured, finalizeGoogleUser])
 
   const signUp = useCallback(
     async (email: string, password: string, displayName: string) => {
@@ -113,34 +154,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(p)
   }, [])
 
-  const signInWithGoogle = useCallback(async () => {
-    const auth = getFirebaseAuth()
-    const provider = getGoogleProvider()
-    if (prefersRedirectAuth()) {
-      // Navigates away; onAuthStateChanged + getRedirectResult finish the job.
-      await signInWithRedirect(auth, provider)
-      return
-    }
-    try {
-      const cred = await signInWithPopup(auth, provider)
-      const p = await upsertUserProfile(cred.user.uid, displayNameFor(cred.user))
-      setProfile(p)
-    } catch (err) {
-      // When the popup is blocked or can't run here, fall back to a full-page
-      // redirect instead of silently failing.
-      const code = (err as { code?: string }).code ?? ''
-      if (
-        code === 'auth/popup-blocked' ||
-        code === 'auth/popup-closed-by-user' ||
-        code === 'auth/cancelled-popup-request' ||
-        code === 'auth/operation-not-supported-in-this-environment'
-      ) {
+  const signInWithGoogle = useCallback(
+    async (intent: AuthIntent = 'login') => {
+      const auth = getFirebaseAuth()
+      const provider = getGoogleProvider()
+      if (prefersRedirectAuth()) {
+        sessionStorage.setItem(GOOGLE_INTENT_KEY, intent)
+        // Navigates away; getRedirectResult + onAuthStateChanged finish the job.
         await signInWithRedirect(auth, provider)
         return
       }
-      throw err
-    }
-  }, [])
+      let cred: UserCredential
+      try {
+        cred = await signInWithPopup(auth, provider)
+      } catch (err) {
+        // When the popup is blocked or can't run here, fall back to a full-page
+        // redirect instead of silently failing.
+        const code = (err as { code?: string }).code ?? ''
+        if (
+          code === 'auth/popup-blocked' ||
+          code === 'auth/popup-closed-by-user' ||
+          code === 'auth/cancelled-popup-request' ||
+          code === 'auth/operation-not-supported-in-this-environment'
+        ) {
+          sessionStorage.setItem(GOOGLE_INTENT_KEY, intent)
+          await signInWithRedirect(auth, provider)
+          return
+        }
+        throw err
+      }
+      await finalizeGoogleUser(cred, intent)
+    },
+    [finalizeGoogleUser],
+  )
 
   const refreshProfile = useCallback(async () => {
     if (!user) return

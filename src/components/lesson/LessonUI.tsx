@@ -80,9 +80,19 @@ export function ActionBar({
 
   return (
     <div className="action-bar">
-      <button type="button" className="btn primary full" onClick={onCheck} disabled={checkDisabled}>
-        Check
-      </button>
+      <div className="action-bar-row">
+        <button
+          type="button"
+          className="btn primary flex"
+          onClick={onCheck}
+          disabled={checkDisabled}
+        >
+          Check
+        </button>
+        <button type="button" className="btn secondary" onClick={onGetHelp}>
+          Get a hint
+        </button>
+      </div>
     </div>
   )
 }

@@ -90,9 +90,13 @@ export function TranslateByControl({
     if (active === 'x') {
       nextDx = n
       setDx(n)
+      // Auto-advance to the y box if it still needs a value, so the user can
+      // fill both quickly. They can still click back on either box to change it.
+      if (yEditable && nextDy === null) setActive('y')
     } else {
       nextDy = n
       setDy(n)
+      if (xEditable && nextDx === null) setActive('x')
     }
     animateTo(nextDx ?? lockedDx, nextDy ?? lockedDy)
   }

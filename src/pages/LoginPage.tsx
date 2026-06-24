@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { NO_ACCOUNT_CODE, REDIRECT_ERROR_KEY, useAuth } from '../context/AuthContext'
 
 export function LoginPage() {
   const { signIn, signUp, signInWithGoogle, configured } = useAuth()
@@ -11,6 +11,42 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
+  // Surface a "no account" result that came back from a mobile redirect.
+  useEffect(() => {
+    if (sessionStorage.getItem(REDIRECT_ERROR_KEY) === NO_ACCOUNT_CODE) {
+      sessionStorage.removeItem(REDIRECT_ERROR_KEY)
+      setMode('signup')
+      setError("You don't have an account yet — please sign up. You can use email & password or Google.")
+    }
+  }, [])
+
+  const handleAuthError = (err: unknown) => {
+    const code = (err as { code?: string }).code ?? ''
+    switch (code) {
+      case NO_ACCOUNT_CODE:
+        setMode('signup')
+        setError("You don't have an account yet — please sign up below. You can use email & password or Google.")
+        return
+      case 'auth/email-already-in-use':
+        setMode('login')
+        setError('An account with this email already exists — please log in.')
+        return
+      case 'auth/invalid-credential':
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+        setError('Incorrect email or password. New here? Tap “Sign up” below to create an account.')
+        return
+      case 'auth/unauthorized-domain':
+        setError('This site isn’t authorized for Google sign-in yet. Add this domain under Firebase Authentication → Settings → Authorized domains.')
+        return
+      case 'auth/operation-not-allowed':
+        setError('That sign-in method is disabled. Enable it in Firebase Authentication → Sign-in method.')
+        return
+      default:
+        setError(err instanceof Error ? err.message : 'Authentication failed')
+    }
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -19,7 +55,7 @@ export function LoginPage() {
       if (mode === 'signup') await signUp(email, password, name || 'Learner')
       else await signIn(email, password)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed')
+      handleAuthError(err)
     } finally {
       setLoading(false)
     }
@@ -29,18 +65,9 @@ export function LoginPage() {
     setError(null)
     setLoading(true)
     try {
-      await signInWithGoogle()
+      await signInWithGoogle(mode === 'signup' ? 'signup' : 'login')
     } catch (err) {
-      const code = (err as { code?: string }).code ?? ''
-      const message =
-        code === 'auth/unauthorized-domain'
-          ? 'This site isn’t authorized for Google sign-in yet. Add this domain under Firebase Authentication → Settings → Authorized domains.'
-          : code === 'auth/operation-not-allowed'
-            ? 'Google sign-in is disabled. Enable it in Firebase Authentication → Sign-in method.'
-            : err instanceof Error
-              ? err.message
-              : 'Google sign-in failed'
-      setError(message)
+      handleAuthError(err)
     } finally {
       setLoading(false)
     }
@@ -110,7 +137,7 @@ VITE_FIREBASE_APP_ID=...`}</pre>
         disabled={loading}
       >
         <span className="google-g" aria-hidden="true">G</span>
-        Continue with Google
+        {mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
       </button>
 
       <button

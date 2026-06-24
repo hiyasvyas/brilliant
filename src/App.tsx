@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { AuthGuard, GuestGuard, LoginPage } from './pages/LoginPage'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import './App.css'
 
 // Route-split the heavier authenticated screens (lesson engine, graph
@@ -28,8 +29,9 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
+        <ErrorBoundary>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
             <Route
               path="/login"
               element={
@@ -62,8 +64,9 @@ function App() {
                 </AuthGuard>
               }
             />
-          </Routes>
-        </Suspense>
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </BrowserRouter>
     </AuthProvider>
   )
