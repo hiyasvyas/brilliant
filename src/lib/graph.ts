@@ -40,7 +40,3 @@ export function pointsEqual(
   if (tolerance === 0) return a[0] === b[0] && a[1] === b[1]
   return Math.abs(a[0] - b[0]) <= tolerance && Math.abs(a[1] - b[1]) <= tolerance
 }
-
-export function parabolaY(x: number, h: number, k: number, a: number): number {
-  return a * (x - h) ** 2 + k
-}

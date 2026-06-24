@@ -25,6 +25,88 @@
   gap: 3px;
 }
 
+.stat-help {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.stat-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.stat-help-btn:hover,
+.stat-help-btn[aria-expanded='true'] {
+  background: #334155;
+  color: #f8fafc;
+  border-color: #475569;
+}
+
+.stat-help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.stat-help-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 21;
+  width: 280px;
+  max-width: calc(100vw - 32px);
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stat-help-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.stat-help-icon {
+  font-size: 18px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.stat-help-row strong {
+  display: block;
+  font-size: 13px;
+  color: #f8fafc;
+  margin-bottom: 2px;
+}
+
+.stat-help-row p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #94a3b8;
+}
+
 .stat-icon {
   font-size: 16px;
   line-height: 1;

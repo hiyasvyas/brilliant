@@ -77,10 +77,12 @@ function displayNameFor(user: User): string {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const configured = isFirebaseConfigured()
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
-  const configured = isFirebaseConfigured()
+  // Start "loading" only when Firebase is configured; otherwise there is no
+  // auth state to wait for, so we can render immediately.
+  const [loading, setLoading] = useState(configured)
 
   // An account counts as "signed up" only once it has a profile document. On a
   // login attempt with no profile, we undo the just-created Google credential
@@ -104,10 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
-    if (!configured) {
-      setLoading(false)
-      return
-    }
+    if (!configured) return
 
     const auth = getFirebaseAuth()
 

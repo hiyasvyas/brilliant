@@ -105,11 +105,3 @@ export function applyLessonCompletion(
     lastLessonCompleteDate,
   }
 }
-
-export function isTodayFilled(profile: UserProfile, today = dateKey()): boolean {
-  const idx = getWeekdayIndex(new Date(`${today}T12:00:00`))
-  if (profile.weekStartDate !== getWeekStartMonday(new Date(`${today}T12:00:00`))) {
-    return false
-  }
-  return profile.weeklyCompleted[idx] ?? false
-}
