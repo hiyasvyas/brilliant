@@ -1,13 +1,14 @@
 # Brilliant Algebra
 
-**Subject: Algebra I — graph transformations & coordinate translations.**
+**A learn-by-doing Algebra I course — taught through interactive graphs, not videos.**
 
-A mobile-friendly, learn-by-doing web app that teaches 9th-grade Algebra I through
-**interactive graph manipulation instead of videos or lectures**. Students complete a
-lesson on graph transformations and coordinate translations by dragging points, sliding
-graphs, getting instant feedback, viewing hand-written explanations, and tracking progress
-that persists across sessions. There are **no AI features** — the core experience stands on
-its own.
+A mobile-friendly web app that teaches 9th-grade Algebra I by **direct manipulation
+instead of lectures**. Students work through a path of lessons by dragging points, sliding
+shapes, balancing scales, building lines, and answering questions — getting instant,
+hand-written feedback and tracking progress that persists across sessions and devices.
+There are **no AI features**; the interactive content stands on its own.
+
+Live app: **https://brilliant-algebra.web.app**
 
 ## User persona
 
@@ -16,49 +17,83 @@ through lectures**, across three flavors:
 
 1. **Struggling student (C or below)** — memorizes formulas but doesn't connect algebra to
    graphs; gets frustrated after mistakes and needs confidence-building practice. *Success:*
-   correctly solves graph-transformation problems and can explain *why* the answer is right.
+   correctly solves problems and can explain *why* the answer is right.
 2. **Average student (B's)** — knows the procedures but struggles with graph interpretation.
    *Success:* gains conceptual confidence and improves quiz/test performance.
 3. **Motivated learner** — enjoys math and wants active practice beyond classwork. *Success:*
-   progresses quickly and keeps a learning streak.
+   progresses through the path quickly and keeps a learning streak.
 
-Everything — the draggable coordinate plane, instant feedback, retries, "Why?"/"Get Help",
-streaks — is designed so a learner can get something wrong, recover from the feedback, and
-build real understanding through hands-on interaction.
+Everything — draggable graphs, instant feedback, adaptive retries, "Why?"/"Get Help",
+XP and streaks — is designed so a learner can get something wrong, recover from the
+feedback, and build real understanding through hands-on interaction.
 
-## What the learner can do
+## The course
 
-- **Drag a point** on a coordinate plane to a target location.
-- **Move a point** a set number of units left/right/up/down.
-- **Slide a graph** (segment, triangle, parabola) to perform a translation.
-- **Find a translated vertex** — drag a marker to where `y = x²` lands after a slide.
-- **Enter a translation `(Δx, Δy)`** and watch the shape animate into place.
-- Get **instant feedback** on every answer, with a short hand-written explanation.
-- Use **Check Answer**, **Why?** (reasoning without the answer), and **Get Help** (full
-  step-by-step solution), with **unlimited retries**.
-- See **progress persist**: leave mid-lesson, come back on any device, resume where you left
-  off. Completing a lesson updates **XP, a daily streak, and the course path**, then
-  recommends the next lesson.
+Lessons are laid out as an adventure-style **Learning Path**. Each one lives in a themed
+region, unlocks after the previous lesson is completed, and can be replayed for review or
+practice afterward:
+
+| # | Lesson | Region |
+|---|--------|--------|
+| 1 | Translations: How Things Slide | Graph City |
+| 2 | Linear Equations & Graphs | Linear Mountain |
+| 3 | Functions: Notation, Domain & Range | Function Kingdom |
+| 4 | Systems of Equations | System Caves |
+| 5 | Quadratic Equations & Parabolas | Parabola Peaks |
+| 6 | Polynomials | Polynomial Forest |
+| 7 | Exponential Models | Exponential Heights |
+
+Each lesson is a sequence of interactive steps, followed by a **lesson check** (a short quiz
+that must be passed to complete the lesson), plus a separate **practice mode** with extra
+problems.
+
+## How a lesson works
+
+- **Interactive step types**, mixed per lesson: drag a point, move a point a set number of
+  units, slide/drag a whole shape, enter a translation `(Δx, Δy)`, find a translated vertex,
+  balance a scale to solve `ax + b = c`, move along a number line, discover slope by dragging
+  a line, build a line from slope & intercept, run a function machine, plus multiple-choice,
+  number-input, "predict first", and concept screens with live graphs.
+- **Instant feedback** on every answer, with a short hand-written explanation.
+- **Check Answer**, **Why?** (reasoning without giving away the answer), **Get Help / hints**
+  (step-by-step), and **unlimited retries**.
+- **Adaptive practice:** a wrong answer serves a *fresh variant* of the same skill (new
+  numbers) rather than the identical question. After several misses of the same type, a
+  deeper **remediation** lesson re-teaches the concept before the learner retries.
+- **Insights** turn correct answers into teaching moments ("notice that…").
+
+## Progress, XP & streaks
+
+- **Progress persists:** leave mid-lesson and resume on any device exactly where you left off.
+- **XP & levels:** earn XP for correct first-try answers plus a lesson-completion bonus;
+  leaving a lesson early costs XP. XP rolls up into levels and a weekly tally.
+- **Daily streak** with **streak savers** that are earned by leveling up and auto-applied to
+  cover a missed day, plus a weekly completion row.
+- Completing a lesson updates XP, the streak, the learning path, and points to the next lesson.
 
 ## Tech stack
 
-- **Frontend:** React + TypeScript + Vite
+- **Frontend:** React 19 + TypeScript + Vite, React Router
 - **Auth & data:** Firebase Authentication (email/password + Google) and Cloud Firestore
-  (`users`, per-user `progress` subcollection)
+  (per-user progress + profile)
 - **Hosting:** Firebase Hosting
+- **CI/CD:** GitHub Actions builds and deploys to Firebase Hosting on every push to `main`
 - **Tooling:** ESLint; lesson content authored as typed data in code (no seeding/CMS)
 
 ## Project structure
 
 ```
 src/
-  content/lessons/      # Lessons authored as typed step data (translations.ts, …)
-  components/lesson/    # LessonEngine + interactive problem renderers
-  components/graph/     # Coordinate plane, draggable points, animated transforms
-  pages/                # Home (course map), Lesson, Login, Settings
-  context/AuthContext   # Firebase auth + profile
-  services/             # Firestore progress / mastery / streaks
-  lib/                  # graph math, XP, streak logic
+  content/lessons/      # Each lesson authored as typed step data (one file per lesson)
+  components/lesson/    # LessonEngine, lesson-check engines, complete screen, lesson UI
+  components/graph/     # CoordinatePlane — draggable points, lines, shapes, animated transforms
+  components/stats/     # StatBar (XP / level / streak HUD)
+  components/streak/    # StreakCard (weekly streak + savers)
+  pages/                # Home (learning path), Lesson, Login, Settings
+  context/AuthContext   # Firebase auth + user profile
+  services/             # Firestore progress + lesson-completion rewards
+  lib/                  # graph math, XP/levels, streak logic, Firebase init
+  types/                # Lesson / step / progress / profile types
 ```
 
 ## Getting started
@@ -84,17 +119,8 @@ Email/Password).
 ```bash
 npm run dev        # start the dev server (http://localhost:5173)
 npm run build      # type-check + production build to dist/
-npm run deploy     # build, then deploy hosting + Firestore rules
+npm run deploy     # build, then deploy hosting + Firestore rules (local)
 ```
 
-## Phase 1 MVP checklist
-
-- [x] One subject, built end-to-end for a specific persona (9th-grade Algebra I)
-- [x] One interactive lesson teaching a real concept (translations & graph transformations)
-- [x] Direct manipulation: drag points, drag a vertex, slide graphs, enter `(Δx, Δy)`
-- [x] Interactive visual that responds in real time (animated coordinate plane)
-- [x] Instant, specific, hand-written feedback (no AI)
-- [x] Progress persists and resumes across sessions/devices
-- [x] Accounts and names (Firebase Auth)
-- [x] Works on mobile screen sizes
-- [x] Deployed and public (Firebase Hosting)
+Pushing to `main` also builds and deploys automatically via GitHub Actions
+(`.github/workflows/deploy.yml`).
