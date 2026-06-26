@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -31,31 +29,15 @@ import {
   upsertUserProfile,
 } from '../services/progressService'
 import type { UserProfile } from '../types/lesson'
+import {
+  AuthContext,
+  NO_ACCOUNT_CODE,
+  REDIRECT_ERROR_KEY,
+  type AuthIntent,
+} from './auth-context'
 
-export type AuthIntent = 'login' | 'signup'
-
-/** Error code thrown when someone tries to log in without having signed up. */
-export const NO_ACCOUNT_CODE = 'app/no-account'
-/** sessionStorage keys used to carry state across a full-page auth redirect. */
+/** sessionStorage key used to carry the chosen Google intent across a full-page auth redirect. */
 const GOOGLE_INTENT_KEY = 'auth:googleIntent'
-export const REDIRECT_ERROR_KEY = 'auth:redirectError'
-
-interface AuthContextValue {
-  user: User | null
-  profile: UserProfile | null
-  loading: boolean
-  configured: boolean
-  signUp: (email: string, password: string, displayName: string) => Promise<void>
-  signIn: (email: string, password: string) => Promise<void>
-  signInWithGoogle: (intent?: AuthIntent) => Promise<void>
-  logOut: () => Promise<void>
-  refreshProfile: () => Promise<void>
-  changeUsername: (displayName: string) => Promise<void>
-  changeEmail: (newEmail: string, currentPassword: string) => Promise<void>
-  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null)
 
 function noAccountError(): Error & { code: string } {
   const err = new Error('No account yet — please sign up first.') as Error & { code: string }
@@ -265,10 +247,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
-  return ctx
 }

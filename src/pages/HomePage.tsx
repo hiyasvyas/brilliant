@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { allLessons } from '../content/lessons'
+import { getLessonById } from '../content/lessons'
+import { PATH_LESSON_IDS, resolvePath, type PathNodeState } from '../content/path'
 import { StatBar } from '../components/stats/StatBar'
 import { StreakCard } from '../components/streak/StreakCard'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/auth-context'
 import { getLessonProgress } from '../services/progressService'
 import type { Lesson, LessonProgress } from '../types/lesson'
 
@@ -19,9 +20,9 @@ export function HomePage() {
     void refreshProfile()
     void (async () => {
       const entries = await Promise.all(
-        allLessons.map(async (lesson) => {
-          const p = await getLessonProgress(user.uid, lesson.id)
-          return [lesson.id, p] as const
+        PATH_LESSON_IDS.map(async (id) => {
+          const p = await getLessonProgress(user.uid, id)
+          return [id, p] as const
         }),
       )
       const map: Record<string, LessonProgress> = {}
@@ -32,39 +33,43 @@ export function HomePage() {
     })()
   }, [user, refreshProfile])
 
-  const totalCount = allLessons.length
-  const completedCount = allLessons.filter((l) => progressMap[l.id]?.completed).length
-  const overallPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
-  const allDone = completedCount === totalCount && totalCount > 0
+  // Resolve the learner's position on the adaptive path: which lesson is next,
+  // and which lessons they have already completed (and can review or practice).
+  const pathState: Record<string, PathNodeState> = {}
+  for (const id of PATH_LESSON_IDS) {
+    const p = progressMap[id]
+    pathState[id] = { completed: p?.completed ?? false, outcome: p?.outcome }
+  }
+  const { completed: completedIds, nextLessonId, finished } = resolvePath(pathState)
 
-  const inProgressLesson = allLessons.find((l) => {
-    const p = progressMap[l.id]
-    return p && !p.completed
-  })
-  const firstIncompleteLesson = allLessons.find((l) => !progressMap[l.id]?.completed)
-  const resumeLesson: Lesson | undefined =
-    inProgressLesson ?? firstIncompleteLesson ?? allLessons[0]
+  const completedLessons = completedIds
+    .map((id) => getLessonById(id))
+    .filter((l): l is Lesson => !!l)
+  const nextLesson = nextLessonId ? getLessonById(nextLessonId) : undefined
+  const nextProgress = nextLesson ? progressMap[nextLesson.id] : undefined
+  const nextInProgress = nextProgress && !nextProgress.completed
 
-  const resumeProgress = resumeLesson ? progressMap[resumeLesson.id] : undefined
-  const isFreshStart = !resumeProgress
+  const isFreshStart = completedLessons.length === 0 && !nextInProgress
 
-  const heroTitle = allDone
-    ? 'Every region mastered! 🎉'
+  const heroTitle = finished
+    ? 'Path complete! 🎉'
     : isFreshStart
       ? 'Begin your adventure'
-      : 'Pick up where you left off'
+      : nextInProgress
+        ? 'Pick up where you left off'
+        : 'Ready for your next lesson'
 
-  const heroSub = allDone
-    ? 'You can revisit any lesson below to keep your skills sharp.'
+  const heroSub = finished
+    ? 'You followed your path all the way through. Revisit any lesson below to keep your skills sharp.'
     : isFreshStart
-      ? 'Follow the path one lesson at a time — each builds on the last.'
-      : `You're ${completedCount} of ${totalCount} lessons in. Keep the momentum going!`
+      ? "Start with Translations. Your path adapts to how you do — master a lesson and you'll move on to something new."
+      : nextInProgress
+        ? `Continue your lesson and keep the momentum going.`
+        : 'Your next lesson is picked for you based on how your last one went.'
 
-  const ctaLabel = allDone
-    ? 'Review'
-    : resumeProgress && !resumeProgress.completed
-      ? `Continue · step ${resumeProgress.stepIndex + 1}`
-      : 'Start lesson'
+  const ctaLabel = nextInProgress
+    ? `Continue · step ${(nextProgress?.stepIndex ?? 0) + 1}`
+    : 'Start lesson'
 
   return (
     <div className="app-shell home-page">
@@ -73,7 +78,7 @@ export function HomePage() {
           <span className="home-brand-mark" aria-hidden="true">
             📐
           </span>
-          <span className="home-brand-name">Algebra Adventure</span>
+          <span className="home-brand-name">Geometry Adventure</span>
         </div>
         <div className="home-header-actions">
           <button
@@ -107,27 +112,18 @@ export function HomePage() {
           <h1 className="home-hero-title">{heroTitle}</h1>
           <p className="home-hero-sub">{heroSub}</p>
 
-          <div className="home-hero-progress" aria-label={`${completedCount} of ${totalCount} lessons mastered`}>
-            <div className="home-hero-progress-track">
-              <div className="home-hero-progress-fill" style={{ width: `${overallPct}%` }} />
-            </div>
-            <span className="home-hero-progress-label">
-              {completedCount} / {totalCount} mastered
-            </span>
-          </div>
-
-          {resumeLesson && (
+          {nextLesson && (
             <button
               type="button"
               className="home-hero-cta"
-              onClick={() => navigate(`/lesson/${resumeLesson.id}`)}
+              onClick={() => navigate(`/lesson/${nextLesson.id}`)}
             >
               <span className="home-hero-cta-icon" aria-hidden="true">
-                {resumeLesson.icon}
+                {nextLesson.icon}
               </span>
               <span className="home-hero-cta-text">
                 <span className="home-hero-cta-label">{ctaLabel}</span>
-                <span className="home-hero-cta-lesson">{resumeLesson.title}</span>
+                <span className="home-hero-cta-lesson">{nextLesson.title}</span>
               </span>
               <span className="home-hero-cta-arrow" aria-hidden="true">
                 →
@@ -149,73 +145,83 @@ export function HomePage() {
         </div>
       )}
 
-      <section className="home-trail-section">
-        <div className="trail-heading">
-          <h2 className="map-title">Your Learning Path</h2>
-          <p className="trail-subtitle">Lessons unlock in order — follow the trail down.</p>
-        </div>
+      {/* Up next — the single lesson the learner should do, with a little context. */}
+      {nextLesson && (
+        <section className="home-next-section">
+          <div className="trail-heading">
+            <h2 className="map-title">Up next</h2>
+            <p className="trail-subtitle">One lesson at a time — your path adapts as you go.</p>
+          </div>
+          <button
+            type="button"
+            className="next-lesson-card"
+            onClick={() => navigate(`/lesson/${nextLesson.id}`)}
+          >
+            <div className="next-lesson-icon">{nextLesson.icon}</div>
+            <div className="next-lesson-body">
+              <span className="next-lesson-region">{nextLesson.region}</span>
+              <span className="next-lesson-title">{nextLesson.title}</span>
+              <span className="next-lesson-desc">{nextLesson.description}</span>
+            </div>
+            <span className="next-lesson-go" aria-hidden="true">
+              {nextInProgress ? 'Continue →' : 'Start →'}
+            </span>
+          </button>
+        </section>
+      )}
 
-        <div className="adventure-trail">
-          {allLessons.map((lesson, idx) => {
-            const progress = progressMap[lesson.id]
-            const completed = progress?.completed ?? false
-            const inProgress = progress && !progress.completed
-            // A lesson unlocks once the previous lesson on the path is mastered.
-            // The first lesson is always open, and finishing the course reopens
-            // every lesson for review.
-            const prevCompleted = idx === 0 || (progressMap[allLessons[idx - 1]!.id]?.completed ?? false)
-            const unlocked = allDone || completed || prevCompleted
-            const isResume = !allDone && resumeLesson?.id === lesson.id
-            const side = idx % 2 === 0 ? 'left' : 'right'
-            const stateClass = !unlocked
-              ? 'locked'
-              : completed
-                ? 'done'
-                : isResume
-                  ? 'resume'
-                  : inProgress
-                    ? 'active'
-                    : ''
-            return (
-              <div
-                className={`trail-row ${side} ${stateClass}`}
-                key={lesson.id}
-                style={{ animationDelay: `${idx * 0.08}s` }}
-              >
-                <button
-                  type="button"
-                  className={`trail-node ${stateClass}`}
-                  onClick={() => unlocked && navigate(`/lesson/${lesson.id}`)}
-                  disabled={!unlocked}
-                  aria-disabled={!unlocked}
-                >
-                  <span className="trail-node-index" aria-hidden="true">
-                    {unlocked ? idx + 1 : '🔒'}
+      {/* Completed lessons — review or practice, no scores shown. */}
+      {completedLessons.length > 0 && (
+        <section className="home-completed-section">
+          <div className="trail-heading">
+            <h2 className="map-title">Lessons you&rsquo;ve finished</h2>
+            <p className="trail-subtitle">Revisit any of these to review or get extra practice.</p>
+          </div>
+          <div className="completed-grid">
+            {completedLessons.map((lesson) => (
+              <div className="completed-card" key={lesson.id}>
+                <div className="completed-card-head">
+                  <span className="completed-card-icon" aria-hidden="true">
+                    {lesson.icon}
                   </span>
-                  <div className="trail-node-icon">{lesson.icon}</div>
-                  <div className="map-node-body">
-                    <span className="map-region">{lesson.region}</span>
-                    <span className="map-lesson-title">{lesson.title}</span>
-                    <div className="map-node-meta">
-                      <span className="map-stars">{completed ? '⭐' : '☆'}</span>
-                      <span className="map-status">
-                        {!unlocked
-                          ? `Finish "${allLessons[idx - 1]!.title}" to unlock`
-                          : completed
-                            ? 'Mastered'
-                            : inProgress
-                              ? `In progress · step ${progress.stepIndex + 1}`
-                              : 'Start'}
-                      </span>
-                    </div>
+                  <div className="completed-card-titles">
+                    <span className="completed-card-region">{lesson.region}</span>
+                    <span className="completed-card-title">{lesson.title}</span>
                   </div>
-                  {isResume && <span className="trail-here-badge">You are here</span>}
-                </button>
+                  {progressMap[lesson.id]?.outcome && (
+                    <span
+                      className={`mastery-pill ${
+                        progressMap[lesson.id]?.outcome === 'mastery' ? 'mastered' : 'review'
+                      }`}
+                    >
+                      {progressMap[lesson.id]?.outcome === 'mastery' ? '🏆 Mastered' : '🌱 Reviewed'}
+                    </span>
+                  )}
+                  <span className="completed-card-check" aria-label="Completed">
+                    ✓
+                  </span>
+                </div>
+                <div className="completed-card-actions">
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={() => navigate(`/lesson/${lesson.id}?mode=review`)}
+                  >
+                    ↻ Review
+                  </button>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => navigate(`/lesson/${lesson.id}?mode=practice`)}
+                  >
+                    Practice
+                  </button>
+                </div>
               </div>
-            )
-          })}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

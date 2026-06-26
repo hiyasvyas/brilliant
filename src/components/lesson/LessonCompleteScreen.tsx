@@ -7,6 +7,8 @@ import './LessonUI.css'
 interface LessonCompleteScreenProps {
   message: string
   discovery?: string
+  /** Clear mastery signal: true = mastered, false = needs support, undefined = not graded. */
+  mastered?: boolean
   nextRegion?: string
   nextTitle?: string
   profile: UserProfile
@@ -24,6 +26,7 @@ interface LessonCompleteScreenProps {
 export function LessonCompleteScreen({
   message,
   discovery,
+  mastered,
   nextRegion,
   nextTitle,
   profile,
@@ -52,6 +55,20 @@ export function LessonCompleteScreen({
     <div className="lesson-engine">
       <div className="lesson-body lesson-complete-body">
         <h1 className="lesson-step-title">Lesson complete!</h1>
+
+        {mastered !== undefined && (
+          <div className={`mastery-banner ${mastered ? 'mastered' : 'support'}`}>
+            <span className="mastery-banner-icon" aria-hidden="true">
+              {mastered ? '🏆' : '🌱'}
+            </span>
+            <span className="mastery-banner-text">
+              {mastered
+                ? 'Concept mastered — you earned the next step on your path.'
+                : "Not quite mastered yet — we've routed you to a supporting lesson to build this up first. You can also practice or review it anytime."}
+            </span>
+          </div>
+        )}
+
         <p className="lesson-prompt">{message}</p>
 
         {discovery && (

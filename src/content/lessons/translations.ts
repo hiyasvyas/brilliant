@@ -213,6 +213,17 @@ export const translationsLesson: Lesson = {
       type: 'move-point',
       title: 'Slide the point',
       prompt: 'Grab the blue point and drag it 4 steps right and 3 steps up.',
+      prediction: {
+        question: 'Before you move it: sliding 4 right and 3 up, which coordinates of the point change?',
+        options: [
+          'Only the x-coordinate',
+          'Only the y-coordinate',
+          'Both x and y change',
+          'Neither changes',
+        ],
+        correctIndex: 2,
+        why: 'Moving right or left changes x; moving up or down changes y. You do both here, so both coordinates change — and they change independently.',
+      },
       start: [-3, -1],
       target: [1, 2],
       insight: 'Nice — you translated the point! It slid to a new spot without changing at all.',
@@ -327,6 +338,12 @@ export const translationsLesson: Lesson = {
       title: 'Translate by the numbers',
       prompt:
         'Translate the triangle by (−3, −1). Drag the number boxes to set how far it moves, and watch each number slide it.',
+      prediction: {
+        question: 'Translating by (−3, −1): which way will the triangle move?',
+        options: ['Right and up', 'Left and up', 'Left and down', 'Right and down'],
+        correctIndex: 2,
+        why: 'A negative x-change means left, and a negative y-change means down. So (−3, −1) slides the triangle left and down.',
+      },
       shape: [
         [1, 1],
         [3, 1],
@@ -341,14 +358,67 @@ export const translationsLesson: Lesson = {
         'The first box, −3, slides it 3 left; the second box, −1, slides it 1 down. For example (1, 1) → (−2, 0).',
       hint: 'Set the first box to −3 (left) and the second box to −1 (down).',
     },
+
+    // ── Part 6: Write it as a vector, then exam-style (no outline) ────────────
+    {
+      id: 'concept-notation',
+      type: 'concept',
+      title: 'Writing a slide as a vector',
+      body:
+        'Instead of saying “3 right and 2 up”, mathematicians write a slide as a single instruction: translate by (Δx, Δy). The first number is how far right (left if it’s negative); the second is how far up (down if negative). From here on there’s no dashed outline to copy — read the instruction and place the image yourself, exactly like a test would ask.',
+      graph: {
+        range: 6,
+        points: [
+          { x: -2, y: -1, color: '#38bdf8', label: 'P' },
+          { x: 1, y: 1, color: '#f472b6', label: "P′ = P + (3, 2)" },
+        ],
+      },
+    },
+    {
+      id: 'exam-vector-1',
+      type: 'drag-shape',
+      title: 'Apply the vector',
+      prompt:
+        'Triangle JKL has vertices J(−4, −2), K(−1, −2), and L(−3, 1). Translate it by the vector (4, 3) and drag it to draw the image J′K′L′. No outline this time — you decide where it lands.',
+      shape: [
+        [-4, -2],
+        [-1, -2],
+        [-3, 1],
+      ],
+      targetDx: 4,
+      targetDy: 3,
+      showTarget: false,
+      insight:
+        'You applied a translation vector with no outline to copy — exactly how it looks on a test.',
+      why: 'Add the vector to every vertex: J(−4, −2) → (0, 1), K(−1, −2) → (3, 1), L(−3, 1) → (1, 4).',
+      hint: 'The vector (4, 3) means 4 right and 3 up. Slide every corner by that same amount.',
+    },
+    {
+      id: 'exam-realworld-1',
+      type: 'move-point',
+      title: 'A real-world slide',
+      prompt:
+        'A delivery drone hovers over the grid at (−3, −2). It flies 6 units east, then 4 units north. Plot the point where it lands.',
+      prediction: {
+        question: 'Flying east and then north — which way is that on the grid?',
+        options: ['Left then down', 'Right then up', 'Right then down', 'Left then up'],
+        correctIndex: 1,
+        why: 'East is the positive x-direction (right) and north is the positive y-direction (up), so this is a translation by (6, 4).',
+      },
+      start: [-3, -2],
+      target: [3, 2],
+      insight: 'East and north are just “right” and “up” — a translation by the vector (6, 4).',
+      why: 'East 6: −3 + 6 = 3. North 4: −2 + 4 = 2. The drone lands at (3, 2).',
+      hint: 'East means add to x (right); north means add to y (up).',
+    },
     {
       id: 'complete',
       type: 'complete',
       title: 'Lesson complete!',
       message:
-        'You slid points, segments, and whole shapes by hand, learned to name an image (like B′), and translated a shape by setting its two numbers.',
+        'You started by sliding figures onto a dashed outline, then learned to translate from the words alone, to write a slide as a vector (Δx, Δy), and finally to handle exam-style and real-world problems with no outline at all.',
       discovery:
-        'A translation slides every point by the same amount, so size, shape, and direction stay fixed — only position changes. We name the slid figure the image (B → B′), and we can capture any slide with two numbers: how far right, and how far up.',
+        'A translation slides every point by the same amount, so size, shape, and direction stay fixed — only position changes. Once you can read a vector like (3, −2) and apply it without an outline to copy, you can solve these the way they appear on a test.',
     },
   ],
 }

@@ -5,9 +5,12 @@ import {
   getDiscovery,
   getLessonById,
   getLessonFlowSteps,
-  getNextLesson,
 } from '../content/lessons'
-import { LessonCheckEngine } from '../components/lesson/LessonCheckEngine'
+import { getNextOnPath } from '../content/path'
+import {
+  LessonCheckEngine,
+  type LessonCheckFinishPayload,
+} from '../components/lesson/LessonCheckEngine'
 import {
   TranslationCheckEngine,
   type TranslationCheckFinishPayload,
@@ -15,13 +18,14 @@ import {
 import { LessonCompleteScreen } from '../components/lesson/LessonCompleteScreen'
 import { LessonEngine, type LessonEngineMode } from '../components/lesson/LessonEngine'
 import { XpHud, XpStarBurst } from '../components/lesson/LessonUI'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/auth-context'
 import {
   finishLessonWithRewards,
   getLessonProgress,
   type LessonFinishResult,
 } from '../services/progressService'
 import type { StepResult } from '../types/lesson'
+import { computeOutcome, MASTERY_RATIO, type LessonOutcome } from '../lib/mastery'
 import '../components/lesson/LessonUI.css'
 
 type PagePhase = 'menu' | 'lesson' | 'lesson-check' | 'complete'
@@ -43,8 +47,15 @@ export function LessonPage() {
   const [engineMode, setEngineMode] = useState<LessonEngineMode>('normal')
   const [stepIndex, setStepIndex] = useState(0)
   const [results, setResults] = useState<StepResult[]>([])
+  // The final content-step results, used to compute mastery vs. support for the
+  // adaptive path once the lesson is finished (lesson-check results never count).
+  const [contentResults, setContentResults] = useState<StepResult[]>([])
   const [isCompleted, setIsCompleted] = useState(false)
   const [finishResult, setFinishResult] = useState<LessonFinishResult | null>(null)
+  const [nextLessonId, setNextLessonId] = useState<string | undefined>(undefined)
+  // Whether the learner mastered the lesson (vs. needs support) — surfaced as a
+  // clear mastery signal on the completion screen.
+  const [mastered, setMastered] = useState<boolean | undefined>(undefined)
   const [engineKey, setEngineKey] = useState(0)
 
   // Live XP tracking for the in-lesson HUD + star animation. Total XP only
@@ -73,6 +84,11 @@ export function LessonPage() {
     </>
   )
 
+  // This is a one-shot initialization effect: it derives the lesson phase from
+  // the route's `mode` param plus an async Firestore progress load. The
+  // synchronous setState calls here are the intended initial sync of external
+  // inputs into the phase state machine, not a reactive cascade.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!lesson) return
 
@@ -133,6 +149,7 @@ export function LessonPage() {
         if (p && !p.completed) {
           // Saved index past last step means main lesson content is done → lesson check
           if (p.stepIndex >= flowStepCount) {
+            setContentResults(p.stepResults)
             setPhase('lesson-check')
             return
           }
@@ -149,12 +166,25 @@ export function LessonPage() {
         setReady(true)
       })
   }, [user, lesson, searchParams])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  const handleCheckFinish = async () => {
+  const handleCheckFinish = async (payload: LessonCheckFinishPayload) => {
     if (!user || !lesson) return
 
-    const result = await finishLessonWithRewards(user.uid, lesson.id, earnedXp)
+    // Whether the learner *passes* the lesson is decided by the end-of-lesson
+    // check: at least MASTERY_RATIO of its questions correct (the review phase
+    // lets them fix mistakes first). Passing follows the path's mastery branch
+    // (e.g. Reflections → Rotations); falling short follows the support branch
+    // (e.g. Reflections → Coordinate plane).
+    const total = lesson.lessonCheck.length
+    const correct = payload.results.filter((r) => r.correct).length
+    const passed = total === 0 || correct / total >= MASTERY_RATIO
+    const outcome: LessonOutcome = passed ? 'mastery' : 'support'
+
+    const result = await finishLessonWithRewards(user.uid, lesson.id, earnedXp, outcome)
     await refreshProfile()
+    setNextLessonId(getNextOnPath(lesson.id, outcome))
+    setMastered(outcome === 'mastery')
     setFinishResult(result)
     setIsCompleted(true)
     setPhase('complete')
@@ -171,8 +201,11 @@ export function LessonPage() {
       return
     }
 
-    const result = await finishLessonWithRewards(user.uid, lesson.id, earnedXp)
+    const { outcome } = computeOutcome(contentResults, getLessonFlowSteps(lesson))
+    const result = await finishLessonWithRewards(user.uid, lesson.id, earnedXp, outcome)
     await refreshProfile()
+    setNextLessonId(getNextOnPath(lesson.id, outcome))
+    setMastered(outcome === 'mastery')
     setFinishResult(result)
     setIsCompleted(true)
     setPhase('complete')
@@ -256,7 +289,7 @@ export function LessonPage() {
         {xpOverlay}
         <LessonCheckEngine
           lesson={lesson}
-          onFinish={() => void handleCheckFinish()}
+          onFinish={(payload) => void handleCheckFinish(payload)}
           onExit={exitToHome}
           onXpEarned={handleXpEarned}
         />
@@ -265,11 +298,12 @@ export function LessonPage() {
   }
 
   if (phase === 'complete' && finishResult) {
-    const next = getNextLesson(lesson)
+    const next = nextLessonId ? getLessonById(nextLessonId) : undefined
     return (
       <LessonCompleteScreen
         message={getCompleteMessage(lesson)}
         discovery={getDiscovery(lesson)}
+        mastered={mastered}
         nextRegion={next?.region}
         nextTitle={next?.title}
         profile={finishResult.profile}
@@ -296,8 +330,9 @@ export function LessonPage() {
         initialStepIndex={stepIndex}
         initialResults={results}
         onXpEarned={handleXpEarned}
-        onLessonStepsComplete={() => {
+        onLessonStepsComplete={(res) => {
           if (engineMode === 'normal' && !isCompleted) {
+            setContentResults(res)
             setPhase('lesson-check')
           } else if (isCompleted) {
             // Finished practice/review of a completed lesson → return to the lesson menu

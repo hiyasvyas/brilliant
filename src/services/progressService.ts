@@ -76,6 +76,7 @@ export async function getLessonProgress(
     stepIndex: data.stepIndex ?? 0,
     stepResults: data.stepResults ?? [],
     completed: data.completed ?? false,
+    outcome: data.outcome,
     updatedAt: data.updatedAt ?? new Date().toISOString(),
   }
 }
@@ -84,13 +85,18 @@ export async function saveLessonProgress(
   uid: string,
   progress: LessonProgress,
 ): Promise<void> {
+  const payload: Record<string, unknown> = {
+    ...progress,
+    updatedAt: new Date().toISOString(),
+    serverUpdated: serverTimestamp(),
+  }
+  // Firestore rejects `undefined` field values — drop any absent optionals.
+  for (const key of Object.keys(payload)) {
+    if (payload[key] === undefined) delete payload[key]
+  }
   await setDoc(
     doc(getFirestoreDb(), 'users', uid, 'progress', progress.lessonId),
-    {
-      ...progress,
-      updatedAt: new Date().toISOString(),
-      serverUpdated: serverTimestamp(),
-    },
+    payload,
     { merge: true },
   )
 }
@@ -146,6 +152,7 @@ export async function finishLessonWithRewards(
   uid: string,
   lessonId: string,
   questionXp: number,
+  outcome?: 'mastery' | 'support',
 ): Promise<LessonFinishResult> {
   const ref = doc(getFirestoreDb(), 'users', uid)
   const snap = await getDoc(ref)
@@ -204,6 +211,9 @@ export async function finishLessonWithRewards(
     stepIndex: 0,
     stepResults: [],
     completed: true,
+    // Preserve a previously-recorded outcome if this completion didn't supply one
+    // (e.g. re-finishing an already-complete lesson) so the path stays stable.
+    outcome: outcome ?? (wasAlreadyDone ? undefined : 'support'),
     updatedAt: new Date().toISOString(),
   })
 

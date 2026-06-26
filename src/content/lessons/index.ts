@@ -1,20 +1,25 @@
 import type { Lesson, LessonStep } from '../../types/lesson'
-import { linearEquationsLesson } from './linearEquations'
-import { functionsLesson } from './functions'
-import { systemsLesson } from './systems'
-import { quadraticsLesson } from './quadratics'
-import { polynomialsLesson } from './polynomials'
-import { exponentialsLesson } from './exponentials'
 import { translationsLesson } from './translations'
+import { reflectionsLesson } from './reflections'
+import { numberLineLesson } from './numberLine'
+import { rotationsLesson } from './rotations'
+import { coordinatePlaneLesson } from './coordinatePlane'
+import { translationsLevel2Lesson } from './translationsLevel2'
+import { coordinatePlaneGuidedLesson } from './coordinatePlaneGuided'
 
+/**
+ * Every lesson on the adaptive path. The course always starts at Translations;
+ * which lesson comes next is chosen by the learner's mastery/support outcome
+ * (see `content/path.ts`), not by this array's order.
+ */
 export const allLessons: Lesson[] = [
-  linearEquationsLesson,
-  functionsLesson,
-  systemsLesson,
-  quadraticsLesson,
-  polynomialsLesson,
-  exponentialsLesson,
   translationsLesson,
+  reflectionsLesson,
+  numberLineLesson,
+  rotationsLesson,
+  coordinatePlaneLesson,
+  translationsLevel2Lesson,
+  coordinatePlaneGuidedLesson,
 ].sort((a, b) => a.order - b.order)
 
 export function getLessonById(id: string): Lesson | undefined {
@@ -36,11 +41,4 @@ export function getCompleteMessage(lesson: Lesson): string {
 export function getDiscovery(lesson: Lesson): string | undefined {
   const complete = lesson.steps.find((s) => s.type === 'complete')
   return complete?.type === 'complete' ? complete.discovery : undefined
-}
-
-/** The next lesson in the course path, or undefined if this is the last one. */
-export function getNextLesson(lesson: Lesson): Lesson | undefined {
-  const idx = allLessons.findIndex((l) => l.id === lesson.id)
-  if (idx === -1 || idx + 1 >= allLessons.length) return undefined
-  return allLessons[idx + 1]
 }

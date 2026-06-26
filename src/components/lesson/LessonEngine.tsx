@@ -14,12 +14,16 @@ import type {
   TranslationInputStep,
   TranslateByStep,
   DragShapeStep,
+  ReflectShapeStep,
+  ReflectPlotStep,
+  RotateShapeStep,
   StepResult,
   Remediation,
 } from '../../types/lesson'
 import { toSvg, GRAPH_SIZE, GRAPH_RANGE } from '../../lib/graph'
 import { getLessonFlowSteps } from '../../content/lessons'
 import { pointsEqual } from '../../lib/graph'
+import { reflectPoints, rotatePoints } from '../../lib/transforms'
 import { checkTextAnswer, XP_PER_QUESTION } from '../../lib/xp'
 import {
   CoordinatePlane,
@@ -36,26 +40,50 @@ import {
 } from '../graph/CoordinatePlane'
 import {
   ActionBar,
+  CoordinateChangeTable,
   ConfidencePicker,
   HelpHint,
+  LiveDirectionHint,
+  PredictionGate,
   ProgressBar,
   ResetLessonButton,
+  SignErrorNote,
   StartOverButton,
+  TransformRuleNote,
   WhyExplanation,
   type FeedbackState,
 } from './LessonUI'
+import {
+  coordinateChanges,
+  directionalGuidance,
+  signErrorMessage,
+} from '../../lib/translationFeedback'
+import {
+  reflectErrorMessage,
+  reflectionMap,
+  reflectionRule,
+  reflectPlotMessage,
+  rotateErrorMessage,
+  rotationMap,
+  rotationRule,
+} from '../../lib/transformFeedback'
+import { computeGroundTruth } from '../../lib/mathEngine'
+import type { HintContext } from '../../services/aiHint'
 import './LessonUI.css'
-import { useAuth } from '../../context/AuthContext'
+
+/**
+ * Optional per-problem feedback extras a manipulation component can supply:
+ * a coordinate-by-coordinate breakdown for the success banner, and a sign/
+ * direction-error diagnosis for the wrong banner.
+ */
+interface ProblemExtras {
+  correctDetail?: React.ReactNode
+  diagnose?: () => string | null
+}
+import { useAuth } from '../../context/auth-context'
 import { saveLessonProgress } from '../../services/progressService'
 
 export type LessonEngineMode = 'normal' | 'review' | 'practice'
-
-/**
- * How many times a learner may miss the same question type before the lesson
- * pauses to give them a deeper remediation lesson. Lessons only — lesson checks
- * have their own, separate flow.
- */
-const REMEDIATION_THRESHOLD = 3
 
 /**
  * How many times a learner may struggle (a wrong answer or a hint request),
@@ -186,7 +214,200 @@ function makeSimilarStep(step: LessonStep): LessonStep {
     }
   }
 
+  if (step.type === 'reflect-shape') {
+    // Flip to the other axis so the retry isn't a memorised button press.
+    const axis: 'x' | 'y' = step.axis === 'x' ? 'y' : 'x'
+    const p0 = step.shape[0]!
+    const img = axis === 'x' ? [p0[0], -p0[1]] : [-p0[0], p0[1]]
+    return {
+      id,
+      type: 'reflect-shape',
+      title,
+      prompt: `Reflect the shape across the ${axis}-axis to match the dashed image.`,
+      shape: step.shape,
+      axis,
+      why: `Reflecting across the ${axis}-axis negates ${
+        axis === 'x' ? 'each y' : 'each x'
+      }-coordinate: (${p0[0]}, ${p0[1]}) → (${img[0]}, ${img[1]}).`,
+      hint: `A reflection across the ${axis}-axis flips the shape ${
+        axis === 'x' ? 'top-to-bottom' : 'left-to-right'
+      }.`,
+    }
+  }
+
+  if (step.type === 'reflect-plot') {
+    // Fresh point in a random quadrant, and flip the axis so the retry isn't a
+    // memorised drag. Keep both coordinates non-zero so the flip is meaningful.
+    const axis: 'x' | 'y' = step.axis === 'x' ? 'y' : 'x'
+    let nx = 0
+    let ny = 0
+    while (nx === 0) nx = randInt(-5, 5)
+    while (ny === 0) ny = randInt(-5, 5)
+    const img = axis === 'x' ? [nx, -ny] : [-nx, ny]
+    return {
+      id,
+      type: 'reflect-plot',
+      title,
+      prompt: `Reflect (${nx}, ${ny}) across the ${axis}-axis. Drag the point to where its image lands.`,
+      point: [nx, ny],
+      axis,
+      why: `Across the ${axis}-axis, ${
+        axis === 'x' ? 'keep x and negate y' : 'keep y and negate x'
+      }: (${nx}, ${ny}) → (${img[0]}, ${img[1]}).`,
+      hint: `The mirror is the ${axis}-axis, so ${
+        axis === 'x' ? 'x stays the same and y flips sign' : 'y stays the same and x flips sign'
+      }.`,
+    }
+  }
+
+  if (step.type === 'rotate-shape') {
+    const options: (90 | 180 | 270)[] = [90, 180, 270]
+    const degrees = options[randInt(0, options.length - 1)]!
+    const p0 = step.shape[0]!
+    const img = rotatePoints([p0], degrees)[0]!
+    return {
+      id,
+      type: 'rotate-shape',
+      title,
+      prompt: `Rotate the shape ${degrees}° counterclockwise about the origin to match the image.`,
+      shape: step.shape,
+      degrees,
+      why: `Rotating ${degrees}° counterclockwise about the origin takes (${p0[0]}, ${p0[1]}) → (${img[0]}, ${img[1]}).`,
+      hint: `Turn the whole shape ${degrees}° counterclockwise, keeping the origin fixed.`,
+    }
+  }
+
+  if (step.type === 'number-line') {
+    const { min, max } = step
+    // Pick a fresh start and a non-zero move that keeps the landing point on
+    // the line, so the retry is the same skill with new numbers.
+    const span = Math.max(1, Math.min(6, max - min))
+    let start = randInt(min, max)
+    let delta = 0
+    for (let tries = 0; tries < 50; tries++) {
+      start = randInt(min, max)
+      delta = randInt(-span, span)
+      if (delta !== 0 && start + delta >= min && start + delta <= max) break
+    }
+    if (delta === 0) delta = start + 1 <= max ? 1 : -1
+    const target = start + delta
+    const n = Math.abs(delta)
+    const dir = delta > 0 ? 'right' : 'left'
+    const unit = n === 1 ? 'unit' : 'units'
+    const tick = n === 1 ? 'tick mark' : 'tick marks'
+    return {
+      id,
+      type: 'number-line',
+      title,
+      prompt: `Start at ${start} and move ${n} ${unit} ${dir} — drag the marker to where you land.`,
+      start,
+      target,
+      min,
+      max,
+      why: `${dir === 'right' ? 'Right means add' : 'Left means subtract'}: ${start} ${
+        delta > 0 ? '+' : '−'
+      } ${n} = ${target}. The marker lands on ${target}.`,
+      hint: `Count ${n} ${tick} to the ${dir} of ${start}.`,
+    }
+  }
+
   return { ...step, id } as LessonStep
+}
+
+/**
+ * Types where `makeSimilarStep` produces a genuinely different question (new
+ * numbers / new transform), so a wrong-answer retry can serve a fresh variant
+ * rather than repeating the identical problem. Recall-style steps that can't be
+ * auto-varied (multiple-choice, number-input) are not listed and simply repeat.
+ */
+function canMakeFreshVariant(step: LessonStep): boolean {
+  return (
+    step.type === 'move-point' ||
+    step.type === 'drag-shape' ||
+    step.type === 'translate-by' ||
+    step.type === 'translation-input' ||
+    step.type === 'reflect-shape' ||
+    step.type === 'reflect-plot' ||
+    step.type === 'rotate-shape' ||
+    step.type === 'number-line'
+  )
+}
+
+/**
+ * Best-effort string form of a step's correct answer. Sent to the AI hint
+ * service ONLY so the model can avoid revealing it (and so the response can be
+ * verified against it). Never shown to the learner.
+ */
+function answerTextFor(step: LessonStep): string {
+  switch (step.type) {
+    case 'multiple-choice':
+      return step.options[step.correctIndex] ?? ''
+    case 'number-input':
+      return step.answers.join(' or ')
+    case 'balance-scale':
+      return `x = ${(step.total - step.constant) / step.coeff}`
+    case 'move-point':
+      return `(${step.target[0]}, ${step.target[1]})`
+    case 'find-vertex':
+      return `(${step.h}, ${step.k})`
+    case 'translate-by':
+    case 'drag-shape':
+      return `(${step.targetDx}, ${step.targetDy})`
+    case 'translation-input': {
+      const dx = step.goalPoints[0]![0] - step.points[0]![0]
+      const dy = step.goalPoints[0]![1] - step.points[0]![1]
+      return `(${dx}, ${dy})`
+    }
+    case 'line-builder':
+      return `y = ${step.target.m}x + ${step.target.b}`
+    case 'slope-discovery':
+      return `slope ${step.targetSlope}`
+    case 'number-line':
+      return String(step.target)
+    case 'function-machine':
+      return `× ${step.mult} then + ${step.add}`
+    case 'reflect-shape':
+      return `reflect across the ${step.axis}-axis`
+    case 'reflect-plot': {
+      const img = reflectPoints([step.point], step.axis)[0]!
+      return `(${img[0]}, ${img[1]})`
+    }
+    case 'rotate-shape':
+      return `rotate ${step.degrees}° counterclockwise`
+    default:
+      return ''
+  }
+}
+
+/** Problem types where the learner drags something, so live (level-3) directional guidance applies. */
+function isDraggableType(type: LessonStep['type']): boolean {
+  return (
+    type === 'move-point' ||
+    type === 'drag-shape' ||
+    type === 'translate-by' ||
+    type === 'translation-input'
+  )
+}
+
+/**
+ * Deterministic level-2 ("more guiding") hint used when AI is off or fails, so
+ * the escalating ladder always has something smarter than the first hint —
+ * without ever revealing the answer.
+ */
+function guidingFallback(step: LessonStep): string {
+  if (isDraggableType(step.type)) {
+    return 'Take it one axis at a time: first get the left/right move right, then the up/down move. Check the sign of each.'
+  }
+  if (step.type === 'balance-scale') {
+    return 'Undo the operations in reverse: deal with what is added or subtracted first, then with what multiplies x.'
+  }
+  if (step.type === 'reflect-shape') {
+    return 'Watch one corner. A flip across the x-axis swaps top and bottom; a flip across the y-axis swaps left and right. Which one lands on the dashed image?'
+  }
+  if (step.type === 'rotate-shape') {
+    return 'Counterclockwise turns go up-and-to-the-left. Track a single corner: 90° is a quarter turn, 180° is a half turn, 270° is three quarters.'
+  }
+  return 'Re-read the question and check each part of your answer separately before submitting.'
 }
 
 interface LessonEngineProps {
@@ -194,7 +415,7 @@ interface LessonEngineProps {
   mode: LessonEngineMode
   initialStepIndex: number
   initialResults: StepResult[]
-  onLessonStepsComplete: () => void
+  onLessonStepsComplete: (results: StepResult[]) => void
   onExit: () => void
   onResetFromReview: () => void
   /** Called when a question is answered correctly on the first try with no help. */
@@ -223,10 +444,16 @@ export function LessonEngine({
   const [stepIndex, setStepIndex] = useState(() => clampIndex(initialStepIndex, flowSteps.length))
   const [results, setResults] = useState<StepResult[]>(initialResults)
   const [feedback, setFeedback] = useState<FeedbackState>('idle')
-  const [showHelpHint, setShowHelpHint] = useState(false)
   const [showWhy, setShowWhy] = useState(false)
   const [attempts, setAttempts] = useState(0)
   const [usedHelp, setUsedHelp] = useState(false)
+  /**
+   * Escalating hint level for the current question (stays on the SAME question):
+   *   0 = none, 1 = general hand-written hint, 2 = guiding AI hint,
+   *   3 = live directional guidance while dragging. Each wrong attempt unlocks
+   *   one more level; after 3 wrong attempts the answer reveal takes over.
+   */
+  const [hintLevel, setHintLevel] = useState(0)
   /**
    * Adaptive loop state for the current step.
    * - questionIndex: 0 = the original question, 1+ = the Nth similar question.
@@ -236,6 +463,12 @@ export function LessonEngine({
   const [questionIndex, setQuestionIndex] = useState(0)
   const [wrongStreak, setWrongStreak] = useState(0)
   const [showRemediation, setShowRemediation] = useState(false)
+  /**
+   * A fresh, same-skill question (new numbers) generated for a wrong-answer
+   * retry when the step has no authored `variants`. Stored in state so it stays
+   * stable across re-renders; cleared when we advance to the next step.
+   */
+  const [generatedVariant, setGeneratedVariant] = useState<LessonStep | null>(null)
 
   /**
    * Global "struggle" tracking for the every-3 review interlude. `struggleCount`
@@ -271,21 +504,29 @@ export function LessonEngine({
    */
   const [masteryStep, setMasteryStep] = useState<LessonStep | null>(null)
 
+  /**
+   * Problem ids that needed a rescue or remediation (the worked answer was shown
+   * before the learner solved it). Because results are keyed to the original
+   * step id and the rescue resets the per-question counters, we use this to mark
+   * the final result as "not a clean solve" so it never counts toward mastery.
+   */
+  const assistedIdsRef = useRef<Set<string>>(new Set())
+
   const baseStep = flowSteps[stepIndex]
   const variants: LessonStep[] = (baseStep?.variants as LessonStep[] | undefined) ?? []
   const remediation: Remediation | undefined = baseStep?.remediation
-  // The adaptive loop only applies in normal/practice mode (not read-through review).
-  const isAdaptive = !isReview && (variants.length > 0 || !!remediation)
   // The question currently on screen: a post-rescue mastery question, the
   // original, or a cycled "similar" variant.
   const activeStep: LessonStep | undefined = masteryStep
     ? masteryStep
-    : baseStep && questionIndex > 0 && variants.length > 0
-      ? ({
-          ...variants[(questionIndex - 1) % variants.length],
-          id: baseStep.id,
-          type: baseStep.type,
-        } as LessonStep)
+    : baseStep && questionIndex > 0
+      ? variants.length > 0
+        ? ({
+            ...variants[(questionIndex - 1) % variants.length],
+            id: baseStep.id,
+            type: baseStep.type,
+          } as LessonStep)
+        : (generatedVariant ?? baseStep)
       : baseStep
 
   const problemSteps = flowSteps.filter((s) => s.type !== 'confidence')
@@ -306,7 +547,6 @@ export function LessonEngine({
 
   const resetFeedback = () => {
     setFeedback('idle')
-    setShowHelpHint(false)
     setShowWhy(false)
   }
 
@@ -331,13 +571,31 @@ export function LessonEngine({
     setQuestionIndex(0)
     setWrongStreak(0)
     setShowRemediation(false)
+    setHintLevel(0)
+    setGeneratedVariant(null)
+  }
+
+  // A normal wrong-answer retry: serve a fresh question of the SAME skill with
+  // new numbers instead of repeating the identical problem. The escalating help
+  // ladder (wrongStreak/hintLevel) and attempt counters are intentionally kept,
+  // so a multi-try solve still won't count as a clean mastery solve. Recall-style
+  // steps that can't be auto-varied just re-show the same question.
+  const retryWithFreshQuestion = () => {
+    if (
+      isProblemStep(baseStep) &&
+      (variants.length > 0 || canMakeFreshVariant(baseStep))
+    ) {
+      if (variants.length === 0) setGeneratedVariant(makeSimilarStep(baseStep))
+      setQuestionIndex((i) => i + 1)
+    }
+    resetFeedback()
   }
 
   const goToStep = async (next: number, nextResults: StepResult[]) => {
     if (next >= flowSteps.length) {
       if (mode === 'normal') {
         await persist(flowSteps.length, nextResults)
-        onLessonStepsComplete()
+        onLessonStepsComplete(nextResults)
       } else {
         onExit()
       }
@@ -382,6 +640,7 @@ export function LessonEngine({
   // question before advancing. Generate one and reset the per-question counters
   // (also resetting the every-3 review counter so it doesn't pile on).
   const handleStuckContinue = () => {
+    if (baseStep) assistedIdsRef.current.add(baseStep.id)
     setStuckActive(false)
     setMasteryStep(makeSimilarStep(baseStep))
     setWrongStreak(0)
@@ -390,18 +649,23 @@ export function LessonEngine({
     setStruggleCount(0)
     setBatchWrongIds([])
     setQuestionIndex(0)
+    setGeneratedVariant(null)
     setShowRemediation(false)
+    setHintLevel(0)
     resetFeedback()
     setAttempts(0)
     setUsedHelp(false)
   }
 
   const recordResult = (correct: boolean, helpUsed: boolean) => {
+    // A problem that required a rescue/remediation can never be a clean solve,
+    // even though the post-rescue retry resets the attempt + help counters.
+    const wasAssisted = !!baseStep && assistedIdsRef.current.has(baseStep.id)
     const entry: StepResult = {
       stepId: baseStep.id,
       correct,
-      attempts: attempts + 1,
-      usedHelp: helpUsed,
+      attempts: wasAssisted ? Math.max(attempts + 1, STUCK_THRESHOLD + 1) : attempts + 1,
+      usedHelp: helpUsed || wasAssisted,
     }
     const filtered = results.filter((r) => r.stepId !== baseStep.id)
     const nextResults = [...filtered, entry]
@@ -414,22 +678,19 @@ export function LessonEngine({
     await advanceStep(nextResults)
   }
 
-  // Move to the next similar question of the same type (wrong-streak preserved).
-  const handleTrySimilar = () => {
-    setQuestionIndex((i) => i + 1)
-    setQuestionCounted(false)
-    resetFeedback()
-    setAttempts(0)
-    setUsedHelp(false)
-  }
-
   // After the deeper lesson, serve a fresh question and reset the wrong-streak,
   // so the learner gets a clean run at mastering the concept.
   const handleRemediationContinue = () => {
+    if (baseStep) assistedIdsRef.current.add(baseStep.id)
     setShowRemediation(false)
     setWrongStreak(0)
     setQuestionCounted(false)
+    // Serve a fresh same-skill question (new numbers) after the deeper lesson.
+    if (isProblemStep(baseStep) && variants.length === 0 && canMakeFreshVariant(baseStep)) {
+      setGeneratedVariant(makeSimilarStep(baseStep))
+    }
     setQuestionIndex((i) => i + 1)
+    setHintLevel(0)
     resetFeedback()
     setAttempts(0)
     setUsedHelp(false)
@@ -451,7 +712,11 @@ export function LessonEngine({
     setMasteryStep(null)
   }
 
-  const renderProblemActions = (check: () => boolean, resetProblem: () => void) => {
+  const renderProblemActions = (
+    check: () => boolean,
+    resetProblem: () => void,
+    extras?: ProblemExtras,
+  ) => {
     const startOver = () => {
       resetProblem()
       resetFeedback()
@@ -464,32 +729,69 @@ export function LessonEngine({
       return { startOver, bar: null }
     }
 
-    // When adaptive, a wrong answer counts toward the wrong-streak; once it hits
-    // the threshold the wrong banner offers the deeper remediation lesson.
+    // A wrong answer counts toward the wrong-streak; after STUCK_THRESHOLD misses
+    // on the SAME question the worked-answer reveal takes over.
     const nextWrongStreak = wrongStreak + 1
-    const activeWhy = 'why' in activeStep ? (activeStep as { why: string }).why : ''
+
+    // Targeted-feedback extras (coordinate breakdown + sign-error diagnosis).
+    const diagnosis = extras?.diagnose?.() ?? null
+    const wrongDetail = diagnosis ? <SignErrorNote message={diagnosis} /> : undefined
+    const correctDetail = extras?.correctDetail
+
+    // Grounded context for the level-2 AI hint (problem steps only).
+    const aiHintContext: HintContext | undefined = isProblemStep(activeStep)
+      ? {
+          prompt: activeStep.prompt,
+          concept: activeStep.type,
+          answer: computeGroundTruth(activeStep).text || answerTextFor(activeStep),
+          staticHint: activeStep.hint,
+          step: activeStep,
+        }
+      : undefined
+
+    // Escalating hint ladder: each wrong attempt unlocks one level higher, capped
+    // at 3 (with live directional guidance) for draggable problems, 2 otherwise.
+    const hintCap = isProblemStep(activeStep) ? (isDraggableType(activeStep.type) ? 3 : 2) : 0
+    const maxHintLevel = Math.min(hintCap, wrongStreak + 1)
+
+    const advanceHint = () => {
+      // The first hint marks the question as one that needed help (counts toward
+      // the review interlude and the help-in-a-row rescue), but only once.
+      if (!usedHelp) {
+        setStruggleCount((c) => c + 1)
+        if (!questionCounted) {
+          setHelpRow((r) => r + 1)
+          setQuestionCounted(true)
+        }
+      }
+      setUsedHelp(true)
+      setHintLevel((l) => Math.min(maxHintLevel, l + 1))
+    }
+
+    const hints =
+      hintCap > 0
+        ? {
+            level: hintLevel,
+            maxLevel: maxHintLevel,
+            onGetHint: advanceHint,
+            aiHint: aiHintContext,
+            aiFallback: isProblemStep(activeStep) ? guidingFallback(activeStep) : '',
+          }
+        : undefined
 
     const bar = (
       <ActionBar
         feedback={feedback}
         insight={activeStep.insight}
-        adaptive={
-          isAdaptive
-            ? {
-                why: activeWhy,
-                atThreshold: wrongStreak >= REMEDIATION_THRESHOLD && !!remediation,
-                onTrySimilar: handleTrySimilar,
-                onSeeLesson: () => setShowRemediation(true),
-              }
-            : undefined
-        }
+        correctDetail={correctDetail}
+        wrongDetail={wrongDetail}
+        hints={hints}
         onCheck={() => {
           const ok = check()
           const firstTry = attempts === 0 && !usedHelp
           setAttempts((a) => a + 1)
           if (ok) {
             setFeedback('correct')
-            setShowHelpHint(false)
             recordResult(true, usedHelp)
             // XP only on a clean first pass of the original question — not after
             // running through similar questions, a mastery retry, or a rescue.
@@ -513,13 +815,18 @@ export function LessonEngine({
             setBatchWrongIds((ids) => (ids.includes(baseStep.id) ? ids : [...ids, baseStep.id]))
             setFeedback('wrong')
             setShowWhy(false)
-            // 3 misses on this same question, or 3 questions that needed help in a
-            // row, opens an answer-reveal rescue for this question. Authored
-            // adaptive steps keep their own similar-question / remediation flow.
-            if (!isAdaptive && isProblemStep(baseStep)) {
+            // After 3 wrong attempts on this question, reveal the worked answer:
+            // the authored remediation lesson if one exists, otherwise the
+            // animated answer-reveal rescue. A run of help-needing questions in a
+            // row also opens the rescue.
+            if (isProblemStep(baseStep)) {
               if (nextWrongStreak >= STUCK_THRESHOLD) {
-                setStuckReason('same')
-                setStuckActive(true)
+                if (remediation) {
+                  setShowRemediation(true)
+                } else {
+                  setStuckReason('same')
+                  setStuckActive(true)
+                }
               } else if (nextRow >= STUCK_THRESHOLD) {
                 setStuckReason('row')
                 setStuckActive(true)
@@ -527,30 +834,14 @@ export function LessonEngine({
             }
           }
         }}
-        onTryAgain={resetFeedback}
-        onGetHelp={() => {
-          // First hint on a question counts as one struggle toward the review, and
-          // — like a wrong answer — marks the question as one that needed help so a
-          // run of hint-only questions also triggers the answer-reveal rescue.
-          if (!usedHelp) {
-            setStruggleCount((c) => c + 1)
-            if (!questionCounted) {
-              const nextRow = helpRow + 1
-              setHelpRow(nextRow)
-              setQuestionCounted(true)
-              if (!isAdaptive && isProblemStep(baseStep) && nextRow >= STUCK_THRESHOLD) {
-                setStuckReason('row')
-                setStuckActive(true)
-              }
-            }
-          }
-          setShowHelpHint(true)
-          setUsedHelp(true)
-        }}
+        onTryAgain={retryWithFreshQuestion}
         onWhy={() => setShowWhy(true)}
         onContinue={async () => {
-          const nextResults = recordResult(true, usedHelp)
-          await advanceStep(nextResults)
+          // The correct result (with its true attempt count) was already recorded
+          // when the answer was checked. Re-recording here would double-count the
+          // attempt and wrongly mark a clean first try as a struggle, so just
+          // advance with the results we already have.
+          await advanceStep(results)
         }}
       />
     )
@@ -625,8 +916,9 @@ export function LessonEngine({
               key={`${stepIndex}-${questionIndex}-${masteryStep ? masteryStep.id : 'base'}`}
               step={activeStep}
               isReview={isReview}
-              showHelpHint={showHelpHint}
+              showHelpHint={hintLevel >= 1}
               showWhy={showWhy}
+              liveHint={hintLevel >= 3}
               onConfidence={() => void handleConfidence()}
               renderProblemActions={renderProblemActions}
             />
@@ -906,6 +1198,16 @@ function answerText(step: ProblemStep): string {
       return step.answers[0] ? `The answer is ${step.answers[0]}.` : ''
     case 'multiple-choice':
       return `The answer is “${step.options[step.correctIndex]}”.`
+    case 'reflect-shape':
+      return `Reflect the shape across the ${step.axis}-axis (negate ${
+        step.axis === 'x' ? 'each y' : 'each x'
+      }-coordinate).`
+    case 'reflect-plot': {
+      const img = reflectPoints([step.point], step.axis)[0]!
+      return `Across the ${step.axis}-axis, (${step.point[0]}, ${step.point[1]}) reflects to (${img[0]}, ${img[1]}).`
+    }
+    case 'rotate-shape':
+      return `Rotate the shape ${step.degrees}° counterclockwise about the origin.`
     default:
       return ''
   }
@@ -1001,8 +1303,14 @@ interface StepContentProps {
   isReview: boolean
   showHelpHint: boolean
   showWhy: boolean
+  /** Level-3 live directional guidance is active (draggable problems only). */
+  liveHint?: boolean
   onConfidence: () => void
-  renderProblemActions: (check: () => boolean, resetProblem: () => void) => {
+  renderProblemActions: (
+    check: () => boolean,
+    resetProblem: () => void,
+    extras?: ProblemExtras,
+  ) => {
     startOver: () => void
     bar: React.ReactNode
   }
@@ -1013,6 +1321,7 @@ function StepContent({
   isReview,
   showHelpHint,
   showWhy,
+  liveHint,
   onConfidence,
   renderProblemActions,
 }: StepContentProps) {
@@ -1144,6 +1453,7 @@ function StepContent({
         isReview={isReview}
         showHelpHint={showHelpHint}
         showWhy={showWhy}
+        liveHint={liveHint}
         renderProblemActions={renderProblemActions}
       />
     )
@@ -1168,6 +1478,7 @@ function StepContent({
         isReview={isReview}
         showHelpHint={showHelpHint}
         showWhy={showWhy}
+        liveHint={liveHint}
         renderProblemActions={renderProblemActions}
       />
     )
@@ -1180,6 +1491,7 @@ function StepContent({
         isReview={isReview}
         showHelpHint={showHelpHint}
         showWhy={showWhy}
+        liveHint={liveHint}
         renderProblemActions={renderProblemActions}
       />
     )
@@ -1188,6 +1500,43 @@ function StepContent({
   if (step.type === 'drag-shape') {
     return (
       <DragShapeProblem
+        step={step}
+        isReview={isReview}
+        showHelpHint={showHelpHint}
+        showWhy={showWhy}
+        liveHint={liveHint}
+        renderProblemActions={renderProblemActions}
+      />
+    )
+  }
+
+  if (step.type === 'reflect-shape') {
+    return (
+      <ReflectShapeProblem
+        step={step}
+        isReview={isReview}
+        showHelpHint={showHelpHint}
+        showWhy={showWhy}
+        renderProblemActions={renderProblemActions}
+      />
+    )
+  }
+
+  if (step.type === 'reflect-plot') {
+    return (
+      <ReflectPlotProblem
+        step={step}
+        isReview={isReview}
+        showHelpHint={showHelpHint}
+        showWhy={showWhy}
+        renderProblemActions={renderProblemActions}
+      />
+    )
+  }
+
+  if (step.type === 'rotate-shape') {
+    return (
+      <RotateShapeProblem
         step={step}
         isReview={isReview}
         showHelpHint={showHelpHint}
@@ -1205,20 +1554,38 @@ function DragShapeProblem({
   isReview,
   showHelpHint,
   showWhy,
+  liveHint,
   renderProblemActions,
 }: {
   step: DragShapeStep
   isReview: boolean
   showHelpHint: boolean
   showWhy: boolean
+  liveHint?: boolean
   renderProblemActions: StepContentProps['renderProblemActions']
 }) {
   const solved: [number, number] = [step.targetDx, step.targetDy]
   const [offset, setOffset] = useState<[number, number]>(isReview ? solved : [0, 0])
+  const [predicted, setPredicted] = useState(isReview)
 
   const reset = () => setOffset([0, 0])
   const check = () => offset[0] === step.targetDx && offset[1] === step.targetDy
-  const { startOver, bar } = renderProblemActions(check, reset)
+  const extras: ProblemExtras = {
+    diagnose: () => signErrorMessage(offset[0], offset[1], step.targetDx, step.targetDy),
+    correctDetail: (
+      <CoordinateChangeTable
+        changes={coordinateChanges(step.shape, step.targetDx, step.targetDy)}
+        dx={step.targetDx}
+        dy={step.targetDy}
+      />
+    ),
+  }
+
+  if (!isReview && step.prediction && !predicted) {
+    return <PredictionGate prediction={step.prediction} onContinue={() => setPredicted(true)} />
+  }
+
+  const { startOver, bar } = renderProblemActions(check, reset, extras)
 
   const showTarget = step.showTarget !== false
   const goal = step.shape.map(
@@ -1241,6 +1608,223 @@ function DragShapeProblem({
           onMove={isReview ? () => {} : (dx, dy) => setOffset([dx, dy])}
         />
       </CoordinatePlane>
+      {liveHint && (
+        <LiveDirectionHint
+          message={directionalGuidance(offset[0], offset[1], step.targetDx, step.targetDy)}
+        />
+      )}
+      {bar}
+    </>
+  )
+}
+
+function ReflectShapeProblem({
+  step,
+  isReview,
+  showHelpHint,
+  showWhy,
+  renderProblemActions,
+}: {
+  step: ReflectShapeStep
+  isReview: boolean
+  showHelpHint: boolean
+  showWhy: boolean
+  renderProblemActions: StepContentProps['renderProblemActions']
+}) {
+  const [picked, setPicked] = useState<'x' | 'y' | null>(isReview ? step.axis : null)
+  const [predicted, setPredicted] = useState(isReview)
+
+  const reset = () => setPicked(null)
+  const check = () => picked === step.axis
+  const extras: ProblemExtras = {
+    diagnose: () => reflectErrorMessage(picked, step.axis),
+    correctDetail: (
+      <TransformRuleNote
+        rule={reflectionRule(step.axis)}
+        maps={reflectionMap(step.shape, step.axis)}
+      />
+    ),
+  }
+
+  if (!isReview && step.prediction && !predicted) {
+    return <PredictionGate prediction={step.prediction} onContinue={() => setPredicted(true)} />
+  }
+
+  const { startOver, bar } = renderProblemActions(check, reset, extras)
+  const target = reflectPoints(step.shape, step.axis)
+  const current = picked ? reflectPoints(step.shape, picked) : step.shape
+
+  return (
+    <>
+      {!isReview && <StartOverButton onClick={startOver} />}
+      <p className="lesson-prompt">{step.prompt}</p>
+      {showHelpHint && <HelpHint text={step.hint} />}
+      {showWhy && <WhyExplanation text={step.why} />}
+      <CoordinatePlane>
+        <ShapeGlyph shape={target} color="#64748b" dashed />
+        <ShapeGlyph shape={step.shape} color="#1e3a5f" opacity={0.5} />
+        <g className="transform-pop" key={picked ?? 'start'}>
+          <ShapeGlyph shape={current} color="#38bdf8" />
+        </g>
+      </CoordinatePlane>
+      <div className="transform-choices" role="group" aria-label="Choose a reflection">
+        <button
+          type="button"
+          className={`transform-choice ${picked === 'x' ? 'active' : ''}`}
+          onClick={() => !isReview && setPicked('x')}
+          disabled={isReview}
+        >
+          <span className="transform-choice-icon" aria-hidden="true">⇅</span>
+          Across x-axis
+        </button>
+        <button
+          type="button"
+          className={`transform-choice ${picked === 'y' ? 'active' : ''}`}
+          onClick={() => !isReview && setPicked('y')}
+          disabled={isReview}
+        >
+          <span className="transform-choice-icon" aria-hidden="true">⇄</span>
+          Across y-axis
+        </button>
+      </div>
+      {bar}
+    </>
+  )
+}
+
+function ReflectPlotProblem({
+  step,
+  isReview,
+  showHelpHint,
+  showWhy,
+  renderProblemActions,
+}: {
+  step: ReflectPlotStep
+  isReview: boolean
+  showHelpHint: boolean
+  showWhy: boolean
+  renderProblemActions: StepContentProps['renderProblemActions']
+}) {
+  const image = reflectPoints([step.point], step.axis)[0]!
+  // Start the draggable point ON the pre-image so the learner must move it to
+  // the reflected position. In review, show it already solved at the image.
+  const [pos, setPos] = useState<[number, number]>(isReview ? image : step.point)
+
+  const reset = () => setPos(step.point)
+  const check = () => pointsEqual(pos, image)
+  const extras: ProblemExtras = {
+    diagnose: () => reflectPlotMessage(pos, step.point, step.axis),
+    correctDetail: (
+      <TransformRuleNote
+        rule={reflectionRule(step.axis)}
+        maps={reflectionMap([step.point], step.axis)}
+      />
+    ),
+  }
+
+  const { startOver, bar } = renderProblemActions(check, reset, extras)
+
+  // Emphasise the mirror line so the learner can see what they're flipping over.
+  const mirror =
+    step.axis === 'x'
+      ? { x1: 0, y1: GRAPH_SIZE / 2, x2: GRAPH_SIZE, y2: GRAPH_SIZE / 2 }
+      : { x1: GRAPH_SIZE / 2, y1: 0, x2: GRAPH_SIZE / 2, y2: GRAPH_SIZE }
+
+  return (
+    <>
+      {!isReview && <StartOverButton onClick={startOver} />}
+      <p className="lesson-prompt">{step.prompt}</p>
+      {showHelpHint && <HelpHint text={step.hint} />}
+      {showWhy && <WhyExplanation text={step.why} />}
+      <CoordinatePlane>
+        <line
+          x1={mirror.x1}
+          y1={mirror.y1}
+          x2={mirror.x2}
+          y2={mirror.y2}
+          stroke="#f472b6"
+          strokeWidth={2}
+          strokeDasharray="2 4"
+          opacity={0.7}
+        />
+        <StaticPoint x={step.point[0]} y={step.point[1]} color="#64748b" label="original" />
+        <DraggablePoint
+          x={pos[0]}
+          y={pos[1]}
+          color="#f472b6"
+          onMove={isReview ? () => {} : (x, y) => setPos([x, y])}
+          label="image"
+        />
+      </CoordinatePlane>
+      {bar}
+    </>
+  )
+}
+
+function RotateShapeProblem({
+  step,
+  isReview,
+  showHelpHint,
+  showWhy,
+  renderProblemActions,
+}: {
+  step: RotateShapeStep
+  isReview: boolean
+  showHelpHint: boolean
+  showWhy: boolean
+  renderProblemActions: StepContentProps['renderProblemActions']
+}) {
+  const [picked, setPicked] = useState<90 | 180 | 270 | null>(isReview ? step.degrees : null)
+  const [predicted, setPredicted] = useState(isReview)
+
+  const reset = () => setPicked(null)
+  const check = () => picked === step.degrees
+  const extras: ProblemExtras = {
+    diagnose: () => rotateErrorMessage(picked, step.degrees),
+    correctDetail: (
+      <TransformRuleNote
+        rule={rotationRule(step.degrees)}
+        maps={rotationMap(step.shape, step.degrees)}
+      />
+    ),
+  }
+
+  if (!isReview && step.prediction && !predicted) {
+    return <PredictionGate prediction={step.prediction} onContinue={() => setPredicted(true)} />
+  }
+
+  const { startOver, bar } = renderProblemActions(check, reset, extras)
+  const target = rotatePoints(step.shape, step.degrees)
+  const current = picked ? rotatePoints(step.shape, picked) : step.shape
+  const options: (90 | 180 | 270)[] = [90, 180, 270]
+
+  return (
+    <>
+      {!isReview && <StartOverButton onClick={startOver} />}
+      <p className="lesson-prompt">{step.prompt}</p>
+      {showHelpHint && <HelpHint text={step.hint} />}
+      {showWhy && <WhyExplanation text={step.why} />}
+      <CoordinatePlane>
+        <ShapeGlyph shape={target} color="#64748b" dashed />
+        <ShapeGlyph shape={step.shape} color="#1e3a5f" opacity={0.5} />
+        <g className="transform-pop" key={picked ?? 'start'}>
+          <ShapeGlyph shape={current} color="#38bdf8" />
+        </g>
+      </CoordinatePlane>
+      <div className="transform-choices" role="group" aria-label="Choose a rotation">
+        {options.map((deg) => (
+          <button
+            key={deg}
+            type="button"
+            className={`transform-choice ${picked === deg ? 'active' : ''}`}
+            onClick={() => !isReview && setPicked(deg)}
+            disabled={isReview}
+          >
+            <span className="transform-choice-icon" aria-hidden="true">↺</span>
+            {deg}°
+          </button>
+        ))}
+      </div>
       {bar}
     </>
   )
@@ -1251,20 +1835,48 @@ function MovePointProblem({
   isReview,
   showHelpHint,
   showWhy,
+  liveHint,
   renderProblemActions,
 }: {
   step: MovePointStep
   isReview: boolean
   showHelpHint: boolean
   showWhy: boolean
+  liveHint?: boolean
   renderProblemActions: StepContentProps['renderProblemActions']
 }) {
   const initial: [number, number] = isReview ? step.target : step.start
   const [pos, setPos] = useState<[number, number]>(initial)
+  const [predicted, setPredicted] = useState(isReview)
 
   const reset = () => setPos(step.start)
   const check = () => pointsEqual(pos, step.target)
-  const { startOver, bar } = renderProblemActions(check, reset)
+  const extras: ProblemExtras = {
+    diagnose: () =>
+      signErrorMessage(
+        pos[0] - step.start[0],
+        pos[1] - step.start[1],
+        step.target[0] - step.start[0],
+        step.target[1] - step.start[1],
+      ),
+    correctDetail: (
+      <CoordinateChangeTable
+        changes={coordinateChanges(
+          [step.start],
+          step.target[0] - step.start[0],
+          step.target[1] - step.start[1],
+        )}
+        dx={step.target[0] - step.start[0]}
+        dy={step.target[1] - step.start[1]}
+      />
+    ),
+  }
+
+  if (!isReview && step.prediction && !predicted) {
+    return <PredictionGate prediction={step.prediction} onContinue={() => setPredicted(true)} />
+  }
+
+  const { startOver, bar } = renderProblemActions(check, reset, extras)
 
   return (
     <>
@@ -1290,6 +1902,16 @@ function MovePointProblem({
           label="P"
         />
       </CoordinatePlane>
+      {liveHint && (
+        <LiveDirectionHint
+          message={directionalGuidance(
+            pos[0] - step.start[0],
+            pos[1] - step.start[1],
+            step.target[0] - step.start[0],
+            step.target[1] - step.start[1],
+          )}
+        />
+      )}
       {bar}
     </>
   )
@@ -1342,12 +1964,14 @@ function TranslationInputProblem({
   isReview,
   showHelpHint,
   showWhy,
+  liveHint,
   renderProblemActions,
 }: {
   step: TranslationInputStep
   isReview: boolean
   showHelpHint: boolean
   showWhy: boolean
+  liveHint?: boolean
   renderProblemActions: StepContentProps['renderProblemActions']
 }) {
   const reviewDx = step.goalPoints[0]![0] - step.points[0]![0]
@@ -1355,6 +1979,7 @@ function TranslationInputProblem({
 
   const [inputDx, setInputDx] = useState(isReview ? String(reviewDx) : '')
   const [inputDy, setInputDy] = useState(isReview ? String(reviewDy) : '')
+  const [predicted, setPredicted] = useState(isReview)
 
   const reset = () => {
     setInputDx('')
@@ -1373,7 +1998,28 @@ function TranslationInputProblem({
     !Number.isNaN(parsedDy) &&
     step.goalPoints.every((g, i) => pointsEqual(g, moved[i]!))
 
-  const { startOver, bar } = renderProblemActions(check, reset)
+  const extras: ProblemExtras = {
+    diagnose: () =>
+      signErrorMessage(
+        Number.isNaN(parsedDx) ? 0 : parsedDx,
+        Number.isNaN(parsedDy) ? 0 : parsedDy,
+        reviewDx,
+        reviewDy,
+      ),
+    correctDetail: (
+      <CoordinateChangeTable
+        changes={coordinateChanges(step.points, reviewDx, reviewDy)}
+        dx={reviewDx}
+        dy={reviewDy}
+      />
+    ),
+  }
+
+  if (!isReview && step.prediction && !predicted) {
+    return <PredictionGate prediction={step.prediction} onContinue={() => setPredicted(true)} />
+  }
+
+  const { startOver, bar } = renderProblemActions(check, reset, extras)
 
   return (
     <>
@@ -1407,6 +2053,16 @@ function TranslationInputProblem({
         <Polygon points={step.goalPoints} color="#94a3b8" dashed />
         <Polygon points={moved} color="#38bdf8" />
       </CoordinatePlane>
+      {liveHint && (
+        <LiveDirectionHint
+          message={directionalGuidance(
+            Number.isNaN(parsedDx) ? 0 : parsedDx,
+            Number.isNaN(parsedDy) ? 0 : parsedDy,
+            reviewDx,
+            reviewDy,
+          )}
+        />
+      )}
       {bar}
     </>
   )
@@ -1419,12 +2075,14 @@ function TranslateByProblem({
   isReview,
   showHelpHint,
   showWhy,
+  liveHint,
   renderProblemActions,
 }: {
   step: TranslateByStep
   isReview: boolean
   showHelpHint: boolean
   showWhy: boolean
+  liveHint?: boolean
   renderProblemActions: StepContentProps['renderProblemActions']
 }) {
   const axis = step.axis ?? 'both'
@@ -1454,9 +2112,12 @@ function TranslateByProblem({
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
     const targetOx = toDx * PX_PER_UNIT
     const targetOy = -toDy * PX_PER_UNIT
-    const startTime = performance.now()
     const duration = 650
+    // Seed the start time from the first rAF timestamp (avoids an impure
+    // `performance.now()` read while keeping the easing identical).
+    let startTime: number | null = null
     const tick = (now: number) => {
+      if (startTime === null) startTime = now
       const t = Math.min(1, (now - startTime) / duration)
       const e = 1 - Math.pow(1 - t, 3) // easeOutCubic
       const node = moverRef.current
@@ -1499,7 +2160,27 @@ function TranslateByProblem({
 
   const check = () => dx === step.targetDx && dy === step.targetDy
 
-  const { startOver, bar } = renderProblemActions(check, reset)
+  const [predicted, setPredicted] = useState(isReview)
+  const extras: ProblemExtras = {
+    diagnose: () => signErrorMessage(dx ?? 0, dy ?? 0, step.targetDx, step.targetDy),
+    correctDetail: (
+      <CoordinateChangeTable
+        changes={coordinateChanges(step.shape, step.targetDx, step.targetDy)}
+        dx={step.targetDx}
+        dy={step.targetDy}
+      />
+    ),
+  }
+
+  if (!isReview && step.prediction && !predicted) {
+    return <PredictionGate prediction={step.prediction} onContinue={() => setPredicted(true)} />
+  }
+
+  // `reset` reads the animation/SVG refs, but it only ever runs from the
+  // "Start Over" button (an event handler) — renderProblemActions stores it, it
+  // is never invoked during render — so the ref access is safe here.
+  // eslint-disable-next-line react-hooks/refs
+  const { startOver, bar } = renderProblemActions(check, reset, extras)
 
   const goal = step.shape.map(
     ([x, y]) => [x + step.targetDx, y + step.targetDy] as [number, number],
@@ -1573,6 +2254,12 @@ function TranslateByProblem({
         <button type="button" className="play-btn" onClick={replay}>
           <span className="play-icon">▶</span> Play
         </button>
+      )}
+
+      {liveHint && (
+        <LiveDirectionHint
+          message={directionalGuidance(dx ?? 0, dy ?? 0, step.targetDx, step.targetDy)}
+        />
       )}
 
       {bar}

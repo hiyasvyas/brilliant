@@ -15,6 +15,9 @@ export type StepType =
   | 'translation-input'
   | 'translate-by'
   | 'drag-shape'
+  | 'reflect-shape'
+  | 'reflect-plot'
+  | 'rotate-shape'
   | 'complete'
 
 /** Declarative description of what to draw on a coordinate plane. */
@@ -88,6 +91,21 @@ export interface Remediation {
   visual?: 'translation' | 'vertex'
 }
 
+/**
+ * A "predict before you move" gate shown ahead of a hands-on problem. Strong
+ * transformation instruction asks the learner to commit to what will happen and
+ * why *before* they interact, so we pose a quick multiple-choice prediction
+ * first, then reveal the manipulation. It never blocks progress — a wrong guess
+ * just shows the reasoning before the learner tries it for real.
+ */
+export interface PredictionPrompt {
+  question: string
+  options: string[]
+  correctIndex: number
+  /** Short hand-written explanation shown after the learner predicts. */
+  why: string
+}
+
 export interface BaseStep {
   id: string
   type: StepType
@@ -98,6 +116,11 @@ export interface BaseStep {
    * into a teaching moment, separate from the on-demand procedural `why`.
    */
   insight?: string
+  /**
+   * Optional "predict before you move" question shown before a hands-on problem
+   * so the learner commits to an outcome and reasoning before manipulating.
+   */
+  prediction?: PredictionPrompt
   /**
    * Adaptive retry loop (lessons only — lesson checks are separate). When the
    * learner answers wrong, the engine serves one of these "similar" questions
@@ -292,6 +315,56 @@ export interface DragShapeStep extends BaseStep {
   hint: string
 }
 
+/**
+ * Reflect-a-shape interaction: the learner taps an axis and the shape flips
+ * across it, snapping to match the dashed target image. Teaches that a
+ * reflection across the x-axis negates y and across the y-axis negates x.
+ */
+export interface ReflectShapeStep extends BaseStep {
+  type: 'reflect-shape'
+  prompt: string
+  /** Pre-image shape: a point, a 2-point segment, or a 3+ point polygon. */
+  shape: [number, number][]
+  /** The axis the learner must reflect across to land on the target image. */
+  axis: 'x' | 'y'
+  why: string
+  hint: string
+}
+
+/**
+ * Reflect-by-plotting interaction (no target shown): the learner is given a
+ * pre-image point and an axis, and must DRAG a point to where the reflected
+ * image lands — working out the coordinates themselves instead of tapping an
+ * axis to copy a dashed outline. A harder, fade-the-scaffold version of
+ * `reflect-shape` used to make the end of the lesson actually teach.
+ */
+export interface ReflectPlotStep extends BaseStep {
+  type: 'reflect-plot'
+  prompt: string
+  /** The pre-image point to reflect (a single point). */
+  point: [number, number]
+  /** The axis to reflect across; the image is the learner's drag target. */
+  axis: 'x' | 'y'
+  why: string
+  hint: string
+}
+
+/**
+ * Rotate-a-shape interaction: the learner taps a rotation amount and the shape
+ * turns about the origin, snapping to match the dashed target image. Rotations
+ * are counterclockwise about (0, 0).
+ */
+export interface RotateShapeStep extends BaseStep {
+  type: 'rotate-shape'
+  prompt: string
+  /** Pre-image shape: a point, a 2-point segment, or a 3+ point polygon. */
+  shape: [number, number][]
+  /** Counterclockwise rotation (degrees) about the origin the learner must apply. */
+  degrees: 90 | 180 | 270
+  why: string
+  hint: string
+}
+
 export interface CompleteStep extends BaseStep {
   type: 'complete'
   message: string
@@ -315,6 +388,9 @@ export type LessonStep =
   | TranslationInputStep
   | TranslateByStep
   | DragShapeStep
+  | ReflectShapeStep
+  | ReflectPlotStep
+  | RotateShapeStep
   | CompleteStep
 
 /**
@@ -410,6 +486,12 @@ export interface LessonProgress {
   stepIndex: number
   stepResults: StepResult[]
   completed: boolean
+  /**
+   * Whether the learner mastered the lesson or needs support, computed from the
+   * content-step results when the lesson is finished. Drives the adaptive path's
+   * choice of next lesson. Absent until the lesson has been completed.
+   */
+  outcome?: 'mastery' | 'support'
   updatedAt: string
 }
 

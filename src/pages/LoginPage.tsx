@@ -1,24 +1,31 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { NO_ACCOUNT_CODE, REDIRECT_ERROR_KEY, useAuth } from '../context/AuthContext'
+import { NO_ACCOUNT_CODE, REDIRECT_ERROR_KEY, useAuth } from '../context/auth-context'
+
+const REDIRECT_NO_ACCOUNT_MESSAGE =
+  "You don't have an account yet — please sign up. You can use email & password or Google."
 
 export function LoginPage() {
   const { signIn, signUp, signInWithGoogle, configured } = useAuth()
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  // A "no account" result that came back from a mobile redirect is read once,
+  // up front, so we derive the initial mode/error from it instead of setting
+  // state inside an effect (which would trigger a cascading render).
+  const [redirectNoAccount] = useState(
+    () => sessionStorage.getItem(REDIRECT_ERROR_KEY) === NO_ACCOUNT_CODE,
+  )
+  const [mode, setMode] = useState<'login' | 'signup'>(redirectNoAccount ? 'signup' : 'login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(
+    redirectNoAccount ? REDIRECT_NO_ACCOUNT_MESSAGE : null,
+  )
   const [loading, setLoading] = useState(false)
 
-  // Surface a "no account" result that came back from a mobile redirect.
+  // Clear the one-shot redirect flag after we've consumed it for the initial state.
   useEffect(() => {
-    if (sessionStorage.getItem(REDIRECT_ERROR_KEY) === NO_ACCOUNT_CODE) {
-      sessionStorage.removeItem(REDIRECT_ERROR_KEY)
-      setMode('signup')
-      setError("You don't have an account yet — please sign up. You can use email & password or Google.")
-    }
-  }, [])
+    if (redirectNoAccount) sessionStorage.removeItem(REDIRECT_ERROR_KEY)
+  }, [redirectNoAccount])
 
   const handleAuthError = (err: unknown) => {
     const code = (err as { code?: string }).code ?? ''
@@ -94,7 +101,7 @@ VITE_FIREBASE_APP_ID=...`}</pre>
   return (
     <div className="auth-page">
       <h1>{mode === 'login' ? 'Welcome back' : 'Create account'}</h1>
-      <p>Algebra for 9th graders — learn by doing.</p>
+      <p>Coordinate geometry for 9th graders — learn by doing.</p>
       <form className="auth-form" onSubmit={submit}>
         {mode === 'signup' && (
           <input
