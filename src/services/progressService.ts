@@ -10,7 +10,6 @@ import { applyLessonCompletion, normalizeProfile } from '../lib/streak'
 import {
   levelForXp,
   resetWeeklyXpIfNeeded,
-  XP_LEAVE_PENALTY,
   XP_LESSON_COMPLETE_BONUS,
 } from '../lib/xp'
 
@@ -48,22 +47,6 @@ export async function updateProfileDisplayName(
   return { ...profile, displayName }
 }
 
-export async function recordLessonCompletion(uid: string): Promise<UserProfile> {
-  const ref = doc(getFirestoreDb(), 'users', uid)
-  const snap = await getDoc(ref)
-  const displayName = snap.exists()
-    ? (snap.data().displayName as string) ?? 'Learner'
-    : 'Learner'
-
-  const current = snap.exists()
-    ? normalizeProfile(snap.data() as Partial<UserProfile>, displayName)
-    : normalizeProfile({}, displayName)
-
-  const updated = applyLessonCompletion(current)
-  await setDoc(ref, updated, { merge: true })
-  return updated
-}
-
 export async function getLessonProgress(
   uid: string,
   lessonId: string,
@@ -99,29 +82,6 @@ export async function saveLessonProgress(
     payload,
     { merge: true },
   )
-}
-
-export async function markLessonComplete(uid: string, lessonId: string): Promise<UserProfile> {
-  const ref = doc(getFirestoreDb(), 'users', uid)
-  const snap = await getDoc(ref)
-  const displayName = snap.exists()
-    ? (snap.data().displayName as string) ?? 'Learner'
-    : 'Learner'
-
-  const completed = snap.exists()
-    ? [...new Set([...(snap.data().lessonsCompleted ?? []), lessonId])]
-    : [lessonId]
-
-  await setDoc(ref, { lessonsCompleted: completed }, { merge: true })
-
-  const wasAlreadyDone = snap.exists() && (snap.data().lessonsCompleted ?? []).includes(lessonId)
-  if (wasAlreadyDone) {
-    return snap.exists()
-      ? normalizeProfile(snap.data() as Partial<UserProfile>, displayName)
-      : normalizeProfile({}, displayName)
-  }
-
-  return recordLessonCompletion(uid)
 }
 
 export interface LessonFinishResult {
@@ -231,23 +191,3 @@ export async function finishLessonWithRewards(
   }
 }
 
-/** Deduct XP when leaving a lesson before finishing. */
-export async function applyLeaveLessonPenalty(uid: string): Promise<void> {
-  const ref = doc(getFirestoreDb(), 'users', uid)
-  const snap = await getDoc(ref)
-  if (!snap.exists()) return
-
-  const displayName = (snap.data().displayName as string) ?? 'Learner'
-  const current = normalizeProfile(snap.data() as Partial<UserProfile>, displayName)
-  const xpState = resetWeeklyXpIfNeeded(current.weeklyXp, current.xpWeekStart)
-  const weeklyXp = Math.max(0, xpState.weeklyXp - XP_LEAVE_PENALTY)
-
-  await setDoc(
-    ref,
-    {
-      weeklyXp,
-      xpWeekStart: xpState.xpWeekStart,
-    },
-    { merge: true },
-  )
-}

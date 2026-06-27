@@ -29,11 +29,6 @@ export function isGradeableProblem(step: LessonStep): boolean {
   return !NON_PROBLEM_TYPES.has(step.type)
 }
 
-/** Number of gradeable problems (excludes concept/confidence/complete). */
-export function countProblems(steps: LessonStep[]): number {
-  return steps.filter(isGradeableProblem).length
-}
-
 export interface OutcomeDetail {
   outcome: LessonOutcome
   /** Problems solved first-try with no hint. */

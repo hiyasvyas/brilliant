@@ -405,51 +405,6 @@ export function WhyExplanation({ text }: { text: string }) {
   return <p className="why-text visible">{text}</p>
 }
 
-interface QuizActionBarProps {
-  feedback: FeedbackState
-  onCheck: () => void
-  onContinue: () => void
-  checkDisabled?: boolean
-}
-
-/** Lesson check quiz: Check only, then correct/incorrect + Continue (no help). */
-export function QuizActionBar({
-  feedback,
-  onCheck,
-  onContinue,
-  checkDisabled,
-}: QuizActionBarProps) {
-  if (feedback === 'correct') {
-    return (
-      <div className="action-bar">
-        <div className="feedback-banner correct">Exactly! Nicely done.</div>
-        <button type="button" className="btn primary full" onClick={onContinue}>
-          Continue
-        </button>
-      </div>
-    )
-  }
-
-  if (feedback === 'wrong') {
-    return (
-      <div className="action-bar">
-        <div className="feedback-banner wrong">Incorrect.</div>
-        <button type="button" className="btn primary full" onClick={onContinue}>
-          Continue
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="action-bar">
-      <button type="button" className="btn primary full" onClick={onCheck} disabled={checkDisabled}>
-        Check
-      </button>
-    </div>
-  )
-}
-
 export function ResetLessonButton({ onClick }: { onClick: () => void }) {
   return (
     <div className="action-bar">

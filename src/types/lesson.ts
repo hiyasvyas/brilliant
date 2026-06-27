@@ -1,5 +1,3 @@
-export type ConfidenceLevel = 'no' | 'maybe' | 'yes'
-
 export type StepType =
   | 'confidence'
   | 'concept'

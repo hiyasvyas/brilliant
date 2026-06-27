@@ -11,7 +11,7 @@ sessions and devices.
 
 The hand-built interactive content stands entirely on its own (Phase 1). A small, optional
 layer of **AI** was added on top in Phase 2 (a grounded, verified "smart hint") — and the app
-works **fully with AI turned off**. See [`docs/phase2-ai-brainlift.md`](docs/phase2-ai-brainlift.md).
+works **fully with AI turned off**.
 
 Live app: **https://brilliant-algebra.web.app**
 
@@ -138,6 +138,18 @@ VITE_FIREBASE_APP_ID=...
 
 Then in the Firebase Console, enable **Authentication → Sign-in method → Google** (and
 Email/Password).
+
+### Disabling AI (Phase 1 feature flag)
+
+AI hints are an enhancement layered on top of the Phase 1 MVP. To prove the app
+works with AI turned off, set the feature flag in `.env`:
+
+```
+VITE_AI_HINTS_ENABLED=false   # unset/true = on (default); false/0/off/no = off
+```
+
+With AI off, the smart-hint label drops the ✨ and the escalating-hint ladder runs
+entirely on deterministic, hand-written fallbacks — no behavior breaks.
 
 ```bash
 npm run dev        # start the dev server (http://localhost:5173)

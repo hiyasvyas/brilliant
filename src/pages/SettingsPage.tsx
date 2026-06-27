@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/auth-context'
+import {
+  getAiHintOverride,
+  isAiHintFlagEnabled,
+  setAiHintOverride,
+} from '../services/aiHint'
+import { isFirebaseConfigured } from '../lib/firebase'
 
 type Status = { kind: 'idle' | 'ok' | 'error'; message: string }
 
@@ -23,6 +29,18 @@ export function SettingsPage() {
   const [newPassword, setNewPassword] = useState('')
   const [passwordStatus, setPasswordStatus] = useState<Status>({ kind: 'idle', message: '' })
   const [savingPassword, setSavingPassword] = useState(false)
+
+  // AI hints can be flipped on/off live (stored in localStorage). null override
+  // means "follow the build-time default". We track the resolved on/off state.
+  const firebaseReady = isFirebaseConfigured()
+  const [aiHintsOn, setAiHintsOn] = useState(isAiHintFlagEnabled())
+  const aiOverridden = getAiHintOverride() !== null
+
+  const toggleAiHints = () => {
+    const next = !aiHintsOn
+    setAiHintOverride(next)
+    setAiHintsOn(next)
+  }
 
   const saveUsername = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -97,6 +115,40 @@ export function SettingsPage() {
         {profile && (
           <p className="settings-meta">
             {profile.totalXp} total XP · {profile.lessonsCompleted.length} lessons completed
+          </p>
+        )}
+      </section>
+
+      <section className="settings-section">
+        <h2>AI smart hints</h2>
+        <p className="settings-meta">
+          AI hints are an optional enhancement. Turn them off and the lessons still
+          teach fully — the hint ladder falls back to hand-written, math-checked hints.
+        </p>
+        <div className="settings-toggle-row">
+          <span className="settings-toggle-label">
+            Smart hints {aiHintsOn ? 'on' : 'off'}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={aiHintsOn}
+            aria-label="Toggle AI smart hints"
+            className={`settings-switch${aiHintsOn ? ' on' : ''}`}
+            onClick={toggleAiHints}
+          >
+            <span className="settings-switch-knob" />
+          </button>
+        </div>
+        {!firebaseReady && (
+          <p className="settings-status">
+            AI also needs Firebase configured — it's currently unavailable, so the
+            app runs on fallback hints regardless of this toggle.
+          </p>
+        )}
+        {aiOverridden && (
+          <p className="settings-meta">
+            Overriding the build default. This choice is remembered on this device.
           </p>
         )}
       </section>

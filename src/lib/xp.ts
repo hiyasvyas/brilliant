@@ -4,8 +4,6 @@ import { getWeekStartMonday } from './streak'
 export const XP_PER_QUESTION = 20
 /** One-time bonus XP for completing (passing) a lesson. */
 export const XP_LESSON_COMPLETE_BONUS = 40
-/** XP removed from the weekly tally when a learner bails out mid-lesson. */
-export const XP_LEAVE_PENALTY = 20
 
 export function resetWeeklyXpIfNeeded(
   weeklyXp: number,

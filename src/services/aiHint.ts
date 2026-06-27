@@ -66,9 +66,64 @@ function getModel(): GenerativeModel {
   return cachedModel
 }
 
-/** Whether the smarter-hint feature can run (Firebase web config present). */
+/**
+ * localStorage key for a runtime override of the AI-hint flag. This lets the app
+ * flip AI on/off *on screen* (Settings page) without an env change or rebuild —
+ * handy for demoing that the MVP teaches fully with AI turned off. The override,
+ * when present, takes precedence over the build-time env var below.
+ */
+const AI_HINTS_OVERRIDE_KEY = 'ai-hints-enabled'
+
+/** Read the runtime override: true/false if set by the user, else null. */
+export function getAiHintOverride(): boolean | null {
+  try {
+    const raw = localStorage.getItem(AI_HINTS_OVERRIDE_KEY)
+    if (raw === 'true') return true
+    if (raw === 'false') return false
+    return null
+  } catch {
+    return null
+  }
+}
+
+/** Set (true/false) or clear (null) the runtime override. Safe if storage is unavailable. */
+export function setAiHintOverride(value: boolean | null): void {
+  try {
+    if (value === null) localStorage.removeItem(AI_HINTS_OVERRIDE_KEY)
+    else localStorage.setItem(AI_HINTS_OVERRIDE_KEY, value ? 'true' : 'false')
+  } catch {
+    // Ignore: storage being unavailable just means no override (env wins).
+  }
+}
+
+/** The build-time default from the env var (unset/empty/true = on). */
+function envAiHintEnabled(): boolean {
+  const flag = import.meta.env.VITE_AI_HINTS_ENABLED
+  if (flag === undefined || flag === null || flag === '') return true
+  const value = String(flag).trim().toLowerCase()
+  return !(value === 'false' || value === '0' || value === 'off' || value === 'no')
+}
+
+/**
+ * Phase 1 feature flag. AI hints are an *enhancement* on top of the MVP, so the
+ * whole AI layer can be turned off explicitly. Resolution order:
+ *   1. The runtime override (Settings toggle / localStorage), if the user set one.
+ *   2. Otherwise the build-time `VITE_AI_HINTS_ENABLED` env var (default on).
+ * With it off, the escalating-hint ladder runs entirely on deterministic fallbacks.
+ */
+export function isAiHintFlagEnabled(): boolean {
+  const override = getAiHintOverride()
+  if (override !== null) return override
+  return envAiHintEnabled()
+}
+
+/**
+ * Whether the smarter-hint feature can run: the Phase 1 feature flag must be on
+ * AND the Firebase web config must be present. Either being absent disables AI
+ * and callers fall back to the hand-written static hints.
+ */
 export function isAiHintAvailable(): boolean {
-  return isFirebaseConfigured()
+  return isAiHintFlagEnabled() && isFirebaseConfigured()
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
