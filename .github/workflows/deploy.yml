@@ -33,16 +33,26 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
         run: npm run build
 
-      # Deploy with the Firebase CLI rather than action-hosting-deploy@v0. The
-      # action's channel-release step fails with FAILED_PRECONDITION when the
-      # built version already matches the live version (e.g. after a manual
-      # `firebase deploy`), reporting a false CI failure. `firebase deploy`
-      # re-releases idempotently and never errors on unchanged content.
+      # Deploy with the Firebase CLI. Firebase Hosting rejects a release whose
+      # content is byte-identical to the live version with a 400
+      # FAILED_PRECONDITION ("is the current active version"). That happens
+      # whenever the same build was already deployed (e.g. a manual
+      # `firebase deploy` before the push), and it isn't a real failure — the
+      # desired end state (live serves this exact build) is already met. So we
+      # treat that specific error as success and only fail on genuine errors.
       - name: Deploy to Firebase Hosting
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
-          npx -y firebase-tools@latest deploy --only hosting --project tiktokwork-e2972 --non-interactive
+          set +e
+          out=$(npx -y firebase-tools@latest deploy --only hosting --project tiktokwork-e2972 --non-interactive 2>&1)
+          code=$?
+          echo "$out"
           rm -f "$RUNNER_TEMP/firebase-sa.json"
+          if [ $code -ne 0 ] && echo "$out" | grep -q "is the current active version"; then
+            echo "Live already serves this exact build — nothing to release. Treating as success."
+            exit 0
+          fi
+          exit $code
