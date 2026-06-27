@@ -33,10 +33,16 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
         run: npm run build
 
+      # Deploy with the Firebase CLI rather than action-hosting-deploy@v0. The
+      # action's channel-release step fails with FAILED_PRECONDITION when the
+      # built version already matches the live version (e.g. after a manual
+      # `firebase deploy`), reporting a false CI failure. `firebase deploy`
+      # re-releases idempotently and never errors on unchanged content.
       - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          channelId: live
-          projectId: tiktokwork-e2972
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          npx -y firebase-tools@latest deploy --only hosting --project tiktokwork-e2972 --non-interactive
+          rm -f "$RUNNER_TEMP/firebase-sa.json"
