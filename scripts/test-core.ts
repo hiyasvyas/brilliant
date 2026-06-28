@@ -12,7 +12,8 @@
 import { reflectPoints, rotatePoints } from '../src/lib/transforms'
 import { computeGroundTruth, verifyHintIsSafe } from '../src/lib/mathEngine'
 import { computeOutcome } from '../src/lib/mastery'
-import { getNextOnPath, resolvePath, type PathNodeState } from '../src/content/path'
+import { getNextOnPath, resolvePath, LESSON_PATH, type PathNodeState } from '../src/content/path'
+import { allLessons, getLessonById } from '../src/content/lessons'
 import {
   checkTextAnswer,
   normalizeCheckAnswer,
@@ -218,15 +219,129 @@ group('computeOutcome', () => {
 
 // ── Adaptive path ───────────────────────────────────────────────────────────
 group('path', () => {
-  eq(getNextOnPath('reflections-101', 'mastery'), 'rotations-101', 'reflections pass → rotations')
-  eq(
-    getNextOnPath('reflections-101', 'support'),
-    'coordinate-plane-101',
-    'reflections fail → coordinate plane',
-  )
+  // Spine: the core transformations course, advancing into new concepts.
   eq(getNextOnPath('translations-101', 'mastery'), 'reflections-101', 'translations pass → reflections')
   eq(getNextOnPath('translations-101', 'support'), 'number-line-101', 'translations fail → number line')
-  eq(getNextOnPath('rotations-101', 'mastery'), undefined, 'rotations is terminal')
+  eq(getNextOnPath('reflections-101', 'mastery'), 'rotations-101', 'reflections pass → rotations')
+  eq(getNextOnPath('reflections-101', 'support'), 'coordinate-plane-101', 'reflections fail → coordinate plane')
+  eq(getNextOnPath('rotations-101', 'mastery'), 'dilations-101', 'rotations pass → dilations')
+  eq(getNextOnPath('rotations-101', 'support'), 'reflections-guided-101', 'rotations fail → guided reflections')
+  eq(
+    getNextOnPath('dilations-101', 'mastery'),
+    'combining-transformations-101',
+    'dilations pass → combining transformations',
+  )
+  eq(
+    getNextOnPath('dilations-101', 'support'),
+    'rotations-ratiowarmup-101',
+    'dilations fail → rotations revisit with ratio warmup',
+  )
+  eq(
+    getNextOnPath('combining-transformations-101', 'mastery'),
+    'congruence-similarity-101',
+    'combining pass → congruence & similarity',
+  )
+  eq(
+    getNextOnPath('combining-transformations-101', 'support'),
+    'combining-revisit-101',
+    'combining fail → combining with scaffolds',
+  )
+  eq(
+    getNextOnPath('congruence-similarity-101', 'mastery'),
+    'linear-equations-101',
+    'congruence pass → linear equations (next unit)',
+  )
+  eq(
+    getNextOnPath('congruence-similarity-101', 'support'),
+    'combining-revisit-101',
+    'congruence fail → combining revisit',
+  )
+
+  // Terminal endpoints sit at the far ends of the tree.
+  eq(getNextOnPath('linear-equations-101', 'mastery'), undefined, 'linear equations is a terminal endpoint')
+  eq(getNextOnPath('teacher-intervention-101', 'support'), undefined, 'teacher check-in is a terminal stop')
+
+  // Number-line support track: rebuild, climb, and ease back to the spine.
+  eq(getNextOnPath('number-line-101', 'mastery'), 'coordinate-plane-101', 'number line pass → coordinate plane')
+  eq(
+    getNextOnPath('number-line-101', 'support'),
+    'coordinate-plane-guided-101',
+    'number line fail → guided coordinate plane (deep support)',
+  )
+  eq(
+    getNextOnPath('coordinate-plane-101', 'mastery'),
+    'translations-201',
+    'coordinate plane mastered → scaffolded translations',
+  )
+  eq(
+    getNextOnPath('coordinate-plane-101', 'support'),
+    'number-line-extra-101',
+    'still stuck → number-line repeat',
+  )
+  eq(
+    getNextOnPath('coordinate-plane-guided-101', 'mastery'),
+    'translations-201',
+    'guided plane mastered → scaffolded translations',
+  )
+  eq(
+    getNextOnPath('coordinate-plane-guided-101', 'support'),
+    'teacher-intervention-101',
+    'still stuck on guided plane → supportive check-in',
+  )
+  eq(
+    getNextOnPath('translations-201', 'mastery'),
+    'reflections-101',
+    'scaffolded translations pass → rejoin the spine at reflections',
+  )
+  eq(
+    getNextOnPath('translations-201', 'support'),
+    'coordinate-plane-review-101',
+    'scaffolded translations fail → coordinate plane review',
+  )
+  eq(
+    getNextOnPath('number-line-extra-101', 'mastery'),
+    'coordinate-plane-101',
+    'number-line repeat mastered → coordinate plane',
+  )
+  eq(
+    getNextOnPath('number-line-extra-101', 'support'),
+    'teacher-intervention-101',
+    'number-line repeat fail → supportive check-in',
+  )
+
+  // Reflections support track (from Rotations).
+  eq(
+    getNextOnPath('reflections-guided-101', 'mastery'),
+    'rotations-101',
+    'supported reflections mastered → rejoin the main track at rotations',
+  )
+  eq(
+    getNextOnPath('reflections-guided-101', 'support'),
+    'reflections-guidedretry-101',
+    'supported reflections fail → guided retry + teacher flag',
+  )
+  eq(
+    getNextOnPath('reflections-guidedretry-101', 'mastery'),
+    'rotations-101',
+    'guided retry mastered → rejoin the main track',
+  )
+  eq(
+    getNextOnPath('reflections-guidedretry-101', 'support'),
+    'teacher-intervention-101',
+    'guided retry fail → teacher-flagged check-in',
+  )
+
+  // Concept-track remediation loops.
+  eq(
+    getNextOnPath('rotations-ratiowarmup-101', 'mastery'),
+    'dilations-101',
+    'ratio warmup mastered → resume the concept track at dilations',
+  )
+  eq(
+    getNextOnPath('rotations-ratiowarmup-101', 'support'),
+    'rotations-101',
+    'ratio warmup fail → redo core rotations',
+  )
 
   const state = (entries: Record<string, PathNodeState>) => entries
 
@@ -240,17 +355,30 @@ group('path', () => {
     'after translations mastery → reflections is next',
   )
 
-  // Full mastery chain ending on a completed terminal → finished.
+  // Full mastery chain all the way to the terminal endpoint → finished.
   const finishedState = state({
     'translations-101': { completed: true, outcome: 'mastery' },
     'reflections-101': { completed: true, outcome: 'mastery' },
     'rotations-101': { completed: true, outcome: 'mastery' },
+    'dilations-101': { completed: true, outcome: 'mastery' },
+    'combining-transformations-101': { completed: true, outcome: 'mastery' },
+    'congruence-similarity-101': { completed: true, outcome: 'mastery' },
+    'linear-equations-101': { completed: true, outcome: 'mastery' },
   })
-  eq(resolvePath(finishedState).finished, true, 'completed terminal → path finished')
+  eq(resolvePath(finishedState).finished, true, 'completed terminal endpoint → path finished')
   eq(resolvePath(finishedState).nextLessonId, undefined, 'finished path has no next lesson')
-  eq(resolvePath(finishedState).completed.length, 3, 'three lessons recorded as completed')
+  eq(resolvePath(finishedState).completed.length, 7, 'seven lessons recorded as completed')
 
-  // Support branch routing.
+  // Mastering Rotations advances to Dilations (not terminal).
+  const deepMastery = state({
+    'translations-101': { completed: true, outcome: 'mastery' },
+    'reflections-101': { completed: true, outcome: 'mastery' },
+    'rotations-101': { completed: true, outcome: 'mastery' },
+  })
+  eq(resolvePath(deepMastery).nextLessonId, 'dilations-101', 'rotations mastered → dilations is next')
+  eq(resolvePath(deepMastery).finished, false, 'rotations mastery does not finish the path')
+
+  // Support branch routing: struggle on translations, then on the number line.
   const supportState = state({
     'translations-101': { completed: true, outcome: 'support' },
     'number-line-101': { completed: true, outcome: 'support' },
@@ -260,6 +388,90 @@ group('path', () => {
     'coordinate-plane-guided-101',
     'support → number line → guided coordinate plane',
   )
+
+  // After rebuilding the plane on the support track, the learner is routed to
+  // scaffolded translations on the way back toward the spine (not a dead-end).
+  const rejoinState = state({
+    'translations-101': { completed: true, outcome: 'support' },
+    'number-line-101': { completed: true, outcome: 'mastery' },
+    'coordinate-plane-101': { completed: true, outcome: 'mastery' },
+  })
+  eq(
+    resolvePath(rejoinState).nextLessonId,
+    'translations-201',
+    'rebuilt the plane → routed to scaffolded translations on the way back',
+  )
+  eq(resolvePath(rejoinState).finished, false, 'still mid-path after rejoining, not finished')
+
+  // Climbing the ladder: gentlest guided lesson mastered → scaffolded translations.
+  const ladderState = state({
+    'translations-101': { completed: true, outcome: 'support' },
+    'number-line-101': { completed: true, outcome: 'support' },
+    'coordinate-plane-guided-101': { completed: true, outcome: 'mastery' },
+  })
+  eq(
+    resolvePath(ladderState).nextLessonId,
+    'translations-201',
+    'gentlest prerequisite mastered → step up to scaffolded translations',
+  )
+
+  // Every path edge points at a lesson that actually exists (no dangling edges).
+  for (const [id, edges] of Object.entries(LESSON_PATH)) {
+    ok(!!getLessonById(id), `path node ${id} resolves to a real lesson`)
+    for (const target of [edges.mastery, edges.support]) {
+      if (target) ok(!!getLessonById(target), `edge target ${target} (from ${id}) resolves to a real lesson`)
+    }
+  }
+})
+
+// ── Lesson content integrity (data-driven guard) ────────────────────────────
+group('lesson content integrity', () => {
+  const NON_PROBLEM = new Set(['concept', 'confidence', 'complete'])
+  const seenIds = new Set<string>()
+
+  for (const lesson of allLessons) {
+    ok(!seenIds.has(lesson.id), `lesson id ${lesson.id} is unique`)
+    seenIds.add(lesson.id)
+    ok(typeof lesson.order === 'number', `${lesson.id} has a numeric order`)
+    ok(lesson.steps.length > 0, `${lesson.id} has at least one step`)
+
+    const completeSteps = lesson.steps.filter((s) => s.type === 'complete')
+    eq(completeSteps.length, 1, `${lesson.id} has exactly one complete step`)
+
+    for (const step of lesson.steps) {
+      if (NON_PROBLEM.has(step.type)) continue
+      const s = step as { prompt?: string; why?: string; hint?: string }
+      ok(!!s.prompt && s.prompt.trim().length > 0, `${lesson.id}/${step.id} problem has a prompt`)
+      ok(!!s.why && s.why.trim().length > 0, `${lesson.id}/${step.id} problem has a why`)
+      ok(!!s.hint && s.hint.trim().length > 0, `${lesson.id}/${step.id} problem has a hint`)
+
+      if (step.type === 'multiple-choice') {
+        ok(
+          step.correctIndex >= 0 && step.correctIndex < step.options.length,
+          `${lesson.id}/${step.id} multiple-choice correctIndex is in range`,
+        )
+      }
+      if (step.type === 'number-input') {
+        ok(step.answers.length > 0, `${lesson.id}/${step.id} number-input has answers`)
+      }
+    }
+
+    for (const q of lesson.lessonCheck) {
+      ok(!!q.prompt && q.prompt.trim().length > 0, `${lesson.id} check ${q.id} has a prompt`)
+      ok(q.answers.length > 0, `${lesson.id} check ${q.id} has answers`)
+    }
+  }
+
+  // The two new branch lessons exist, are interactive, and route correctly.
+  for (const id of ['rotations-ratiowarmup-101', 'linear-equations-101']) {
+    const l = getLessonById(id)
+    ok(!!l, `new lesson ${id} is registered`)
+    if (l) {
+      const interactive = l.steps.filter((s) => !NON_PROBLEM.has(s.type))
+      ok(interactive.length >= 2, `${id} has at least two interactive problem steps`)
+      ok(l.lessonCheck.length >= 1, `${id} has a lesson check`)
+    }
+  }
 })
 
 // ── XP, levels, answer checking ─────────────────────────────────────────────

@@ -38,28 +38,70 @@ feedback, and build real understanding through hands-on interaction.
 
 Lessons are laid out as an adventure-style **Learning Path**. Each one lives in a themed
 region and can be replayed for review or practice after completion. The path is **adaptive**:
-instead of a fixed order, the next lesson is chosen by whether the learner **passes** a
-lesson (advance) or needs **support** (a gentler branch):
+instead of a fixed order, the next lesson is chosen by whether the learner **masters** a
+lesson (advance) or needs **support** (a gentler branch). **Mastery is earned on the lesson's
+hands-on problems**, not on the closing quiz — see "How mastery is decided" below.
 
 ```
-Translations ─pass▶ Reflections ─pass▶ Rotations
-     │                   └support▶ Coordinate Plane (all four quadrants)
-     └support▶ Number Line ─pass▶ Translations, Level 2
-                            └support▶ Coordinate Plane: First Steps
+Translations ─m▶ Reflections ─m▶ Rotations ─m▶ Dilations ─m▶ Combining ─m▶ Congruence ─m▶ Linear Equations ★
+     │ s              │ s            │ s            │ s            │ s            │ s
+     ▼                ▼              ▼              ▼              ▼              ▼
+ Number Line     Coordinate     Reflections:   Rotations +    Combining:     Combining:
+ (review)        Plane          Guided Mirror  Ratio Warmup   w/ Scaffolds   Revisit
+     │ m              │ m            │ s            │ (rejoins the concept track) │
+     ▼                ▼              ▼                                            │
+ Coordinate     Translations    Guided Retry ──────────────────────────────────┘
+ Plane          (scaffolded)    + Teacher flag ★
+     │ s              │ m
+     ▼                ▼
+ Number-line     Reflections (rejoins the spine, no scaffolds)
+ repeat / Q1
+ guided ─s▶ Check-In Point ★ (supportive, teacher-flagged stop)
+
+m = mastery branch   s = support branch   ★ = terminal endpoint / supportive stop
 ```
+
+The path is a **branching tree, not a line**. **Mastery** keeps the learner advancing into new
+concepts (Dilations → Combining transformations → Congruence & similarity → the next unit,
+Linear Equations). **Support** never dead-ends: a struggling learner drops to a gentler,
+targeted prerequisite, masters it, and **climbs back up toward the concept they struggled
+with** — so there is always more prerequisite practice *before moving forward*, and always a
+route back into the spine. The course only "finishes" when a learner reaches a terminal
+endpoint at the far edge of the tree (Linear Equations, or a teacher-flagged check-in).
 
 | Lesson | Region | Role |
 |--------|--------|------|
-| Translations: How Things Slide | Graph City | Start |
-| Reflections: Flip Across Axes | Mirror Marsh | Pass → advance |
-| Rotations: Turn Around the Origin | Spin City | Pass branch |
-| Coordinate Plane: All Four Quadrants | Quadrant Quarry | Support branch |
-| Number Line: Coordinates & Direction | Number Line Outpost | Support branch |
-| Translations, Level 2: New Challenges | Graph City | Support→pass branch |
-| Coordinate Plane: First Steps | Quadrant Quarry | Support→support branch |
+| Translations: How Things Slide | Graph City | Start (mastery → Reflections, support → Number Line) |
+| Reflections: Flip Across Axes | Mirror Marsh | Mastery → Rotations, support → Coordinate Plane |
+| Rotations: Turn Around the Origin | Spin City | Mastery → Dilations, support → Guided Reflections |
+| Dilations: Scale from a Center | Scale Summit | Mastery → Combining, support → Rotations + Ratio Warmup |
+| Combining Transformations | Scale Summit | Mastery → Congruence, support → Combining w/ Scaffolds |
+| Congruence & Similarity | Scale Summit | Mastery → **Linear Equations** (next unit) |
+| Linear Equations: A New Unit | Linear Mountain | **Mastery endpoint** ★ (next major topic) |
+| Number Line: Coordinates & Direction | Number Line Outpost | Support branch → Coordinate Plane / Q1 guided |
+| Coordinate Plane: All Four Quadrants | Quadrant Quarry | Mastery → scaffolded Translations, support → Number-line repeat |
+| Coordinate Plane: First Steps (Q1 guided) | Quadrant Quarry | Gentlest prerequisite → scaffolded Translations / Check-In |
+| Translations, Level 2 (scaffolded) | Graph City | Mastery → rejoin spine at Reflections |
+| Number Line: Extra Practice (repeat) | Number Line Outpost | Support branch → Coordinate Plane / Check-In |
+| Coordinate Plane: Quick Review | Quadrant Quarry | Support branch under scaffolded Translations |
+| Reflections: Guided Mirror | Mirror Marsh | Mastery → rejoin at Rotations, support → Guided Retry |
+| Reflections: Guided Retry | Mirror Marsh | Mastery → rejoin at Rotations, support → Check-In (teacher flag) |
+| Rotations: Revisit + Ratio Warmup | Spin City | Mastery → resume at Dilations, support → core Rotations |
+| Combining Transformations: Revisit | Scale Summit | Support branch → retake Combining / Dilations |
+| Check-In Point | Quadrant Quarry | Supportive, teacher-flagged terminal stop ★ |
 
-Each lesson is a sequence of interactive steps, followed by a **lesson check** (a short quiz
-whose score decides pass vs. support), plus a separate **practice mode** with extra problems.
+Each lesson is a sequence of interactive steps, followed by a **lesson check** (retrieval
+practice), plus a separate **practice mode** with extra problems.
+
+### How mastery is decided
+
+The mastery-vs-support branch is computed **only from the lesson's hands-on content problems**
+(`lib/mastery.ts` → `computeOutcome`): a learner advances on the **mastery** branch only when
+they solve **at least 80% of those problems on the first try with no hints** (and struggle on
+no more than a few). Anything less routes to the **support** branch. The end-of-lesson check
+is **retrieval practice** and is intentionally **excluded** from the decision — and hints,
+which always remain available, never penalize the learner beyond keeping that attempt out of
+the clean-solve count.
 
 ## How a lesson works
 

@@ -12,13 +12,19 @@ Transformations are strictly cumulative: you cannot reason about rotations if yo
 can't yet read a coordinate or flip across an axis. So the path **gates on
 mastery** rather than letting everyone march in a fixed line.
 
-- **Mastery signal.** Each lesson ends with a check; the score decides
-  `mastery` (≥ 80% correct) vs `support`. This is computed deterministically
-  (`lib/mastery.ts`, `MASTERY_RATIO`).
+- **Mastery signal.** The signal is computed deterministically from the
+  lesson's **content problems** (`lib/mastery.ts`, `computeOutcome`): `mastery`
+  requires ≥ 80% of those problems solved on the **first try with no hints**
+  (`MASTERY_RATIO`) and no more than `STRUGGLE_LIMIT` struggles; anything less is
+  `support`. The end-of-lesson check is **retrieval practice** and is
+  deliberately excluded from the signal — clean, unaided performance on the
+  hands-on problems is what proves mastery, not a recallable quiz score.
 - **Gating.** The next lesson is chosen by that signal (`content/path.ts`):
   pass advances to the harder concept (e.g. Reflections → Rotations); falling
   short routes to a **supporting** lesson instead (Reflections → Coordinate
   Plane), so the advanced concept stays locked until its prerequisite is solid.
+  Each support branch then drops to a gentler prerequisite, has the learner
+  master it, and climbs back toward the concept they struggled with.
 - **The signal is now visible** (Phase 3 change). Previously the outcome was
   stored but never shown, so a *non-mastered* lesson looked identical to a
   mastered one. Now:
@@ -68,9 +74,9 @@ showed a generic "Not quite."
 
 Every diagnosis and rule is **derived from the same pure transforms** used to
 grade the problem (`lib/transforms.ts`), so feedback can never disagree with the
-answer key. All of this is covered by the standalone suite (`npm test`,
-95 assertions), including reflection/rotation diagnosis, rule strings, and
-point-by-point maps.
+answer key. All of this is covered by the standalone suite (`npm test`),
+including reflection/rotation diagnosis, rule strings, point-by-point maps, and a
+data-driven integrity guard over every lesson's authored content.
 
 ## What was deliberately left out
 

@@ -6,6 +6,7 @@ import { rotationsLesson } from './rotations'
 import { coordinatePlaneLesson } from './coordinatePlane'
 import { translationsLevel2Lesson } from './translationsLevel2'
 import { coordinatePlaneGuidedLesson } from './coordinatePlaneGuided'
+import { expansionLessons } from './expansion'
 
 /**
  * Every lesson on the adaptive path. The course always starts at Translations;
@@ -20,6 +21,7 @@ export const allLessons: Lesson[] = [
   coordinatePlaneLesson,
   translationsLevel2Lesson,
   coordinatePlaneGuidedLesson,
+  ...expansionLessons,
 ].sort((a, b) => a.order - b.order)
 
 export function getLessonById(id: string): Lesson | undefined {

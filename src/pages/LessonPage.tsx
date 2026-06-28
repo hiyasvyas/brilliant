@@ -7,10 +7,7 @@ import {
   getLessonFlowSteps,
 } from '../content/lessons'
 import { getNextOnPath } from '../content/path'
-import {
-  LessonCheckEngine,
-  type LessonCheckFinishPayload,
-} from '../components/lesson/LessonCheckEngine'
+import { LessonCheckEngine } from '../components/lesson/LessonCheckEngine'
 import {
   TranslationCheckEngine,
   type TranslationCheckFinishPayload,
@@ -25,7 +22,7 @@ import {
   type LessonFinishResult,
 } from '../services/progressService'
 import type { StepResult } from '../types/lesson'
-import { computeOutcome, MASTERY_RATIO, type LessonOutcome } from '../lib/mastery'
+import { computeOutcome } from '../lib/mastery'
 import '../components/lesson/LessonUI.css'
 
 type PagePhase = 'menu' | 'lesson' | 'lesson-check' | 'complete'
@@ -168,18 +165,16 @@ export function LessonPage() {
   }, [user, lesson, searchParams])
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const handleCheckFinish = async (payload: LessonCheckFinishPayload) => {
+  const handleCheckFinish = async () => {
     if (!user || !lesson) return
 
-    // Whether the learner *passes* the lesson is decided by the end-of-lesson
-    // check: at least MASTERY_RATIO of its questions correct (the review phase
-    // lets them fix mistakes first). Passing follows the path's mastery branch
-    // (e.g. Reflections → Rotations); falling short follows the support branch
-    // (e.g. Reflections → Coordinate plane).
-    const total = lesson.lessonCheck.length
-    const correct = payload.results.filter((r) => r.correct).length
-    const passed = total === 0 || correct / total >= MASTERY_RATIO
-    const outcome: LessonOutcome = passed ? 'mastery' : 'support'
+    // Mastery vs. support is decided ONLY by the lesson's content problems, not
+    // by the end-of-lesson check (retrieval practice): the learner moves on to
+    // the mastery branch only when they solved at least 80% of the content
+    // problems on the first try with no hints, and struggled on no more than the
+    // allowed few. Anything less routes to the support branch. The lesson check
+    // itself is for retrieval practice and never counts toward the branch.
+    const { outcome } = computeOutcome(contentResults, getLessonFlowSteps(lesson))
 
     const result = await finishLessonWithRewards(user.uid, lesson.id, earnedXp, outcome)
     await refreshProfile()
@@ -289,7 +284,7 @@ export function LessonPage() {
         {xpOverlay}
         <LessonCheckEngine
           lesson={lesson}
-          onFinish={(payload) => void handleCheckFinish(payload)}
+          onFinish={() => void handleCheckFinish()}
           onExit={exitToHome}
           onXpEarned={handleXpEarned}
         />
